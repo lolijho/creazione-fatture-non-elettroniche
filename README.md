@@ -99,9 +99,69 @@ Gli importi delle righe (prezzi, IVA, sconti) e le spedizioni/commissioni vengon
 └── data/                   # Creato al primo avvio (invoices.json, settings.json)
 ```
 
+## Autenticazione
+
+L'applicazione richiede login con **username e password**. Configura le credenziali tramite variabili d'ambiente:
+
+| Variabile | Descrizione |
+|---|---|
+| `AUTH_USERNAME` | Nome utente (default: `admin`) |
+| `AUTH_PASSWORD` | Password in chiaro (bcryptata in memoria all'avvio) |
+| `AUTH_PASSWORD_HASH` | In alternativa, hash bcrypt precalcolato |
+| `SESSION_SECRET` | Chiave di firma dei token di sessione (min. 16 caratteri). Se omessa viene generata e salvata in `data/secret.key` |
+| `COOKIE_SECURE` | `true` per richiedere HTTPS sul cookie di sessione (consigliato in produzione) |
+
+Se non imposti alcuna password l'app parte con `admin/changeme` stampando un warning a console: **non lasciare questa configurazione su un server esposto**.
+
+Per generare un hash bcrypt da usare con `AUTH_PASSWORD_HASH`:
+
+```bash
+node -e "console.log(require('bcryptjs').hashSync('la-mia-password',10))"
+```
+
+Per generare un session secret casuale:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+Il cookie di sessione è `httpOnly`, `SameSite=Lax` e dura 30 giorni. Puoi uscire con il pulsante **Esci** in alto a destra.
+
+## Deploy su Coolify
+
+Il progetto include un `Dockerfile` pronto all'uso.
+
+1. In Coolify crea una nuova **Resource → Application** e collega il repository.
+2. **Build pack:** Dockerfile.
+3. **Port esposta:** `3000`.
+4. **Persistent volume:** monta un volume sul path `/data` (qui vengono scritti `invoices.json`, `settings.json` e la chiave di sessione).
+5. **Variabili d'ambiente** (copia da `.env.example`):
+   - `AUTH_USERNAME` — il tuo username
+   - `AUTH_PASSWORD` *oppure* `AUTH_PASSWORD_HASH`
+   - `SESSION_SECRET` — stringa random di almeno 32 caratteri
+   - `COOKIE_SECURE=true` (Coolify espone sempre HTTPS con Traefik)
+   - `DATA_DIR=/data` (già default nel Dockerfile)
+6. Abilita il dominio HTTPS e salva. Coolify userà la `HEALTHCHECK` del Dockerfile (`/api/health`).
+
+### Build locale del container (per test)
+
+```bash
+docker build -t fatture .
+docker run --rm -p 3000:3000 \
+  -e AUTH_USERNAME=admin \
+  -e AUTH_PASSWORD=supersegreta \
+  -e SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('hex'))") \
+  -v $(pwd)/data:/data \
+  fatture
+```
+
 ## Backup
 
-Fai backup della cartella `data/`: contiene tutte le fatture (`invoices.json`) e le impostazioni (`settings.json`).
+Fai backup della cartella `/data` (in locale `data/`): contiene:
+
+- `invoices.json` — tutte le fatture
+- `settings.json` — impostazioni azienda + credenziali WooCommerce
+- `secret.key` — chiave di firma delle sessioni (ricreata se cancellata → disconnette tutti gli utenti)
 
 ## Licenza
 

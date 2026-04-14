@@ -11,7 +11,9 @@ const { importFromFile } = require('../importer');
 
 const router = express.Router();
 
-const uploadsDir = path.join(__dirname, '..', '..', 'data', 'uploads');
+const uploadsDir = process.env.DATA_DIR
+  ? path.join(path.resolve(process.env.DATA_DIR), 'uploads')
+  : path.join(__dirname, '..', '..', 'data', 'uploads');
 const upload = multer({
   dest: uploadsDir,
   limits: { fileSize: 10 * 1024 * 1024 },

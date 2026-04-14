@@ -58,6 +58,20 @@ body {
 }
 .tab:hover { color: var(--ink); }
 .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tabs .spacer { flex: 1; }
+.tab.logout { color: var(--muted); }
+.tab.logout:hover { color: var(--danger); }
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: #eef2ff;
+  color: #3730a3;
+  border-radius: 999px;
+  font-size: 12px;
+  margin-right: 6px;
+  align-self: center;
+}
 
 main { padding: 24px; max-width: 1200px; margin: 0 auto; }
 .view { display: flex; flex-direction: column; gap: 16px; }

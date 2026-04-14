@@ -14,12 +14,20 @@ const state = {
   importPreview: null,
 };
 
+function handleAuthError(res) {
+  if (res.status === 401) {
+    window.location.href = '/login.html';
+    throw new Error('Sessione scaduta');
+  }
+}
+
 const api = {
   async json(url, opts = {}) {
     const res = await fetch(url, {
       ...opts,
       headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     });
+    handleAuthError(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || 'Errore richiesta');
@@ -28,6 +36,7 @@ const api = {
   },
   async form(url, formData, method = 'POST') {
     const res = await fetch(url, { method, body: formData });
+    handleAuthError(res);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(err.error || 'Errore richiesta');
@@ -437,8 +446,34 @@ function formatDate(s) {
   return d.toLocaleDateString('it-IT');
 }
 
+// ========== Auth ==========
+async function checkAuth() {
+  const res = await fetch('/api/auth/me');
+  if (!res.ok) {
+    window.location.href = '/login.html';
+    return null;
+  }
+  return res.json();
+}
+
+async function doLogout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } finally {
+    window.location.href = '/login.html';
+  }
+}
+
 // ========== Bootstrap ==========
-document.addEventListener('DOMContentLoaded', () => {
-  $$('.tab').forEach((t) => t.addEventListener('click', () => setView(t.dataset.view)));
+document.addEventListener('DOMContentLoaded', async () => {
+  const me = await checkAuth();
+  if (!me) return;
+  const chip = $('#user-chip');
+  if (chip) chip.textContent = me.username;
+  const logoutBtn = $('#btn-logout');
+  if (logoutBtn) logoutBtn.addEventListener('click', doLogout);
+  $$('.tab[data-view]').forEach((t) =>
+    t.addEventListener('click', () => setView(t.dataset.view))
+  );
   render();
 });

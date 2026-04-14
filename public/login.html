@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accesso — Fatture non elettroniche</title>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+      .login-box {
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 28px;
+        width: 100%;
+        max-width: 360px;
+        box-shadow: var(--shadow);
+      }
+      .login-box h1 { margin: 0 0 4px; font-size: 20px; }
+      .login-box p.muted { margin: 0 0 20px; }
+      .login-box .logo {
+        width: 48px; height: 48px;
+        border-radius: 12px;
+        background: var(--primary);
+        color: #fff;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700;
+        margin: 0 auto 14px;
+      }
+      .login-box form { display: flex; flex-direction: column; gap: 12px; }
+      .login-box button { width: 100%; padding: 10px; font-size: 14px; }
+      .login-error { color: var(--danger); font-size: 13px; min-height: 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="login-box">
+      <div class="logo">FT</div>
+      <h1 style="text-align:center">Accesso</h1>
+      <p class="muted" style="text-align:center">Fatture non elettroniche</p>
+      <form id="login-form">
+        <label>Username
+          <input type="text" name="username" autocomplete="username" required autofocus />
+        </label>
+        <label>Password
+          <input type="password" name="password" autocomplete="current-password" required />
+        </label>
+        <div class="login-error" id="login-error"></div>
+        <button type="submit" class="btn primary">Accedi</button>
+      </form>
+    </div>
+    <script src="/login.js"></script>
+  </body>
+</html>
