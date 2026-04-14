@@ -1,0 +1,8 @@
+node_modules/
+data/invoices.json
+data/settings.json
+data/uploads/
+*.log
+.DS_Store
+.env
+.env.local

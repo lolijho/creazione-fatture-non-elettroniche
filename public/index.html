@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Generatore Fatture non Elettroniche</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">FT</span>
+        <div>
+          <h1>Fatture non elettroniche</h1>
+          <p class="muted">Crea, importa e scarica fatture PDF</p>
+        </div>
+      </div>
+      <nav class="tabs">
+        <button class="tab active" data-view="dashboard">Fatture</button>
+        <button class="tab" data-view="nuova">Nuova fattura</button>
+        <button class="tab" data-view="import">Import CSV/Excel</button>
+        <button class="tab" data-view="woocommerce">WooCommerce</button>
+        <button class="tab" data-view="impostazioni">Impostazioni</button>
+      </nav>
+    </header>
+
+    <main id="app"></main>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <template id="tpl-dashboard">
+      <section class="view">
+        <div class="row-between">
+          <h2>Archivio fatture</h2>
+          <button class="btn primary" data-action="new">+ Nuova fattura</button>
+        </div>
+        <div class="card">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Numero</th>
+                <th>Data</th>
+                <th>Cliente</th>
+                <th>Origine</th>
+                <th class="right">Totale</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="invoices-tbody">
+              <tr><td colspan="6" class="muted center">Caricamento…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </template>
+
+    <template id="tpl-nuova">
+      <section class="view">
+        <div class="row-between">
+          <h2 id="form-title">Nuova fattura</h2>
+          <div class="btn-group">
+            <button class="btn" data-action="preview">Anteprima PDF</button>
+            <button class="btn primary" data-action="save">Salva fattura</button>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div class="card">
+            <h3>Dati fattura</h3>
+            <div class="grid two">
+              <label>Numero
+                <input name="numero" placeholder="(auto)" />
+              </label>
+              <label>Data
+                <input type="date" name="data" />
+              </label>
+              <label>Scadenza
+                <input type="date" name="scadenza" />
+              </label>
+              <label>Metodo pagamento
+                <input name="metodoPagamento" placeholder="Bonifico bancario" />
+              </label>
+            </div>
+            <label>Note
+              <textarea name="note" rows="3"></textarea>
+            </label>
+          </div>
+
+          <div class="card">
+            <h3>Cliente</h3>
+            <label>Ragione sociale / Nome
+              <input name="cliente.ragioneSociale" required />
+            </label>
+            <div class="grid two">
+              <label>Partita IVA
+                <input name="cliente.partitaIva" />
+              </label>
+              <label>Codice fiscale
+                <input name="cliente.codiceFiscale" />
+              </label>
+              <label>Email
+                <input type="email" name="cliente.email" />
+              </label>
+              <label>Telefono
+                <input name="cliente.telefono" />
+              </label>
+            </div>
+            <label>Indirizzo
+              <input name="cliente.indirizzo" />
+            </label>
+            <div class="grid three">
+              <label>CAP
+                <input name="cliente.cap" />
+              </label>
+              <label>Città
+                <input name="cliente.citta" />
+              </label>
+              <label>Prov.
+                <input name="cliente.provincia" maxlength="4" />
+              </label>
+            </div>
+            <label>Paese
+              <input name="cliente.paese" value="Italia" />
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row-between">
+            <h3>Righe fattura</h3>
+            <button class="btn" data-action="add-row">+ Aggiungi riga</button>
+          </div>
+          <table class="table righe">
+            <thead>
+              <tr>
+                <th>Descrizione</th>
+                <th>Codice</th>
+                <th>UM</th>
+                <th>Q.tà</th>
+                <th>Prezzo</th>
+                <th>Sconto %</th>
+                <th>IVA %</th>
+                <th class="right">Totale</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="righe-tbody"></tbody>
+          </table>
+          <div class="totals">
+            <div><span>Imponibile</span><strong id="t-imponibile">€ 0,00</strong></div>
+            <div><span>IVA</span><strong id="t-iva">€ 0,00</strong></div>
+            <div class="grand"><span>Totale</span><strong id="t-totale">€ 0,00</strong></div>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <template id="tpl-import">
+      <section class="view">
+        <h2>Import da CSV / Excel</h2>
+        <div class="card">
+          <p>Carica un file <code>.csv</code>, <code>.xlsx</code> o <code>.ods</code>. Le righe con lo stesso <code>numero</code> (o stesso cliente+data) vengono raggruppate in una fattura con più righe.</p>
+          <p>
+            <a href="/template-fatture.csv" download>Scarica template CSV di esempio</a>
+          </p>
+          <div class="uploader">
+            <input type="file" id="import-file" accept=".csv,.xlsx,.xls,.ods,.txt" />
+            <button class="btn" id="btn-preview-import">Anteprima</button>
+            <button class="btn primary" id="btn-commit-import" disabled>Importa e salva</button>
+          </div>
+        </div>
+        <div id="import-preview"></div>
+      </section>
+    </template>
+
+    <template id="tpl-woocommerce">
+      <section class="view">
+        <h2>WooCommerce REST API</h2>
+        <div class="card">
+          <p>Configura le credenziali in <strong>Impostazioni → WooCommerce</strong>, poi testa la connessione e importa gli ordini come fatture.</p>
+          <div class="btn-group">
+            <button class="btn" id="btn-wc-test">Testa connessione</button>
+            <input type="text" id="wc-search" placeholder="Cerca ordine (numero, email…)" />
+            <select id="wc-status">
+              <option value="any">Tutti gli stati</option>
+              <option value="completed">Completati</option>
+              <option value="processing">In elaborazione</option>
+              <option value="on-hold">In attesa</option>
+              <option value="pending">Pagamento in attesa</option>
+              <option value="refunded">Rimborsati</option>
+              <option value="cancelled">Annullati</option>
+            </select>
+            <button class="btn primary" id="btn-wc-load">Carica ordini</button>
+          </div>
+        </div>
+        <div class="card">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Ordine</th>
+                <th>Data</th>
+                <th>Cliente</th>
+                <th>Stato</th>
+                <th class="right">Totale</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="wc-tbody">
+              <tr><td colspan="6" class="muted center">Nessun ordine caricato.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </template>
+
+    <template id="tpl-impostazioni">
+      <section class="view">
+        <div class="row-between">
+          <h2>Impostazioni</h2>
+          <button class="btn primary" id="btn-save-settings">Salva impostazioni</button>
+        </div>
+        <div class="grid two">
+          <div class="card">
+            <h3>Dati azienda (mittente)</h3>
+            <label>Ragione sociale
+              <input name="azienda.ragioneSociale" />
+            </label>
+            <div class="grid two">
+              <label>Partita IVA
+                <input name="azienda.partitaIva" />
+              </label>
+              <label>Codice fiscale
+                <input name="azienda.codiceFiscale" />
+              </label>
+            </div>
+            <label>Indirizzo
+              <input name="azienda.indirizzo" />
+            </label>
+            <div class="grid three">
+              <label>CAP
+                <input name="azienda.cap" />
+              </label>
+              <label>Città
+                <input name="azienda.citta" />
+              </label>
+              <label>Prov.
+                <input name="azienda.provincia" />
+              </label>
+            </div>
+            <label>Paese
+              <input name="azienda.paese" />
+            </label>
+            <div class="grid two">
+              <label>Telefono
+                <input name="azienda.telefono" />
+              </label>
+              <label>Email
+                <input name="azienda.email" />
+              </label>
+            </div>
+            <label>Sito web
+              <input name="azienda.sitoWeb" />
+            </label>
+            <label>IBAN
+              <input name="azienda.iban" />
+            </label>
+            <label>Regime fiscale
+              <input name="azienda.regimeFiscale" />
+            </label>
+          </div>
+
+          <div class="card">
+            <h3>Fatturazione</h3>
+            <div class="grid two">
+              <label>Prefisso numero
+                <input name="fatturazione.prefissoNumero" placeholder="es. FT-" />
+              </label>
+              <label>Prossimo numero
+                <input type="number" min="1" name="fatturazione.prossimoNumero" />
+              </label>
+              <label>Aliquota IVA default
+                <input type="number" step="0.01" name="fatturazione.aliquotaIvaDefault" />
+              </label>
+              <label>Valuta
+                <input name="fatturazione.valuta" />
+              </label>
+            </div>
+            <label>Note default
+              <textarea name="fatturazione.noteDefault" rows="2"></textarea>
+            </label>
+            <label>Dichiarazione "non elettronica" (footer PDF)
+              <textarea name="fatturazione.dichiarazioneNonElettronica" rows="2"></textarea>
+            </label>
+
+            <h3 style="margin-top:20px">WooCommerce REST API</h3>
+            <label>URL negozio
+              <input name="woocommerce.url" placeholder="https://miosito.it" />
+            </label>
+            <label>Consumer Key
+              <input name="woocommerce.consumerKey" autocomplete="off" />
+            </label>
+            <label>Consumer Secret
+              <input name="woocommerce.consumerSecret" type="password" autocomplete="off" />
+            </label>
+            <label>Versione API
+              <input name="woocommerce.version" placeholder="wc/v3" />
+            </label>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

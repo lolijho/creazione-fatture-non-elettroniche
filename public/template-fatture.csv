@@ -1,0 +1,4 @@
+numero;data;scadenza;metodo_pagamento;note;cliente_ragione_sociale;cliente_indirizzo;cliente_cap;cliente_citta;cliente_provincia;cliente_paese;cliente_piva;cliente_cf;cliente_email;cliente_telefono;descrizione;codice;unita_misura;quantita;prezzo_unitario;aliquota_iva;sconto_pct
+FT-2026-0001;2026-01-15;2026-02-14;Bonifico bancario;Grazie per l'acquisto;Rossi SRL;Via Roma 10;20100;Milano;MI;Italia;01234567890;;info@rossi.it;02 12345;Consulenza sviluppo software;CONS-01;h;8;75;22;0
+FT-2026-0001;2026-01-15;2026-02-14;Bonifico bancario;Grazie per l'acquisto;Rossi SRL;Via Roma 10;20100;Milano;MI;Italia;01234567890;;info@rossi.it;02 12345;Licenza annuale piattaforma;LIC-PRO;pz;1;499;22;10
+;2026-01-20;;Contanti;;Mario Bianchi;Via Garibaldi 5;00100;Roma;RM;Italia;;BNCMRA80A01H501U;mario@example.com;;Riparazione PC portatile;;pz;1;120;22;0
