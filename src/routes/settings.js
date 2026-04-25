@@ -5,13 +5,17 @@ const storage = require('../storage');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-  res.json(storage.getSettings());
+router.get('/', async (req, res, next) => {
+  try {
+    res.json(await storage.getSettings());
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.put('/', (req, res, next) => {
+router.put('/', async (req, res, next) => {
   try {
-    const saved = storage.saveSettings(req.body || {});
+    const saved = await storage.saveSettings(req.body || {});
     res.json(saved);
   } catch (err) {
     next(err);

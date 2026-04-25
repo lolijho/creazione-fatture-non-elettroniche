@@ -43,19 +43,19 @@ router.post('/preview', upload.single('file'), (req, res, next) => {
 });
 
 // Commit: parse and save invoices
-router.post('/commit', upload.single('file'), (req, res, next) => {
+router.post('/commit', upload.single('file'), async (req, res, next) => {
   const file = req.file;
   try {
     if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
     const parsed = importFromFile(file.path, file.originalname);
     const saved = [];
-    parsed.forEach((inv) => {
-      const numero = inv.numero || storage.nextInvoiceNumber();
+    for (const inv of parsed) {
+      const numero = inv.numero || (await storage.nextInvoiceNumber());
       const finalInv = buildInvoice({ ...inv, numero });
-      storage.upsertInvoice(finalInv);
-      if (!inv.numero) storage.bumpInvoiceCounter();
+      await storage.upsertInvoice(finalInv);
+      if (!inv.numero) await storage.bumpInvoiceCounter();
       saved.push(finalInv);
-    });
+    }
     res.json({ count: saved.length, invoices: saved });
   } catch (err) {
     next(err);

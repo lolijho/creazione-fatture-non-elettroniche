@@ -2,12 +2,14 @@
 
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 
 const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : path.join(__dirname, '..', 'data');
-const INVOICES_FILE = path.join(DATA_DIR, 'invoices.json');
-const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const LEGACY_INVOICES_FILE = path.join(DATA_DIR, 'invoices.json');
+const LEGACY_SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const MIGRATION_DONE_FILE = path.join(DATA_DIR, '.migrated-to-postgres');
 
 const DEFAULT_SETTINGS = {
   azienda: {
@@ -40,94 +42,182 @@ const DEFAULT_SETTINGS = {
     consumerSecret: '',
     version: 'wc/v3',
   },
+  email: {
+    oggettoTemplate: 'Fattura {numero} - {azienda}',
+    corpoTemplate:
+      'Gentile {cliente},\n\nin allegato la fattura {numero} del {data} per un totale di {totale}.\n\nCordiali saluti,\n{azienda}',
+  },
 };
 
-function readJSON(file, fallback) {
-  try {
-    if (!fs.existsSync(file)) return fallback;
-    const raw = fs.readFileSync(file, 'utf8');
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error(`[storage] errore lettura ${file}:`, err.message);
-    return fallback;
-  }
+async function init() {
+  await db.migrate();
+  await migrateLegacyJsonIfNeeded();
 }
 
-function writeJSON(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+function rowToInvoice(row) {
+  if (!row) return null;
+  const inv = row.payload || {};
+  inv.id = row.id;
+  return inv;
 }
 
-function init() {
-  if (!fs.existsSync(INVOICES_FILE)) writeJSON(INVOICES_FILE, []);
-  if (!fs.existsSync(SETTINGS_FILE)) writeJSON(SETTINGS_FILE, DEFAULT_SETTINGS);
+async function getInvoices() {
+  const { rows } = await db.query(
+    'SELECT id, payload FROM invoices ORDER BY data DESC NULLS LAST, created_at DESC'
+  );
+  return rows.map(rowToInvoice);
 }
 
-function getInvoices() {
-  return readJSON(INVOICES_FILE, []);
+async function getInvoice(id) {
+  const { rows } = await db.query('SELECT id, payload FROM invoices WHERE id = $1', [id]);
+  return rowToInvoice(rows[0]);
 }
 
-function saveInvoices(list) {
-  writeJSON(INVOICES_FILE, list);
-}
-
-function getInvoice(id) {
-  return getInvoices().find((i) => i.id === id);
-}
-
-function upsertInvoice(invoice) {
-  const list = getInvoices();
-  const idx = list.findIndex((i) => i.id === invoice.id);
-  if (idx >= 0) list[idx] = invoice;
-  else list.push(invoice);
-  saveInvoices(list);
+async function upsertInvoice(invoice) {
+  const totale = invoice?.totali?.totale ?? null;
+  const data = invoice.data || null;
+  await db.query(
+    `INSERT INTO invoices (id, numero, data, cliente, cliente_email, totale, origine, payload, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+     ON CONFLICT (id) DO UPDATE SET
+       numero = EXCLUDED.numero,
+       data = EXCLUDED.data,
+       cliente = EXCLUDED.cliente,
+       cliente_email = EXCLUDED.cliente_email,
+       totale = EXCLUDED.totale,
+       origine = EXCLUDED.origine,
+       payload = EXCLUDED.payload,
+       updated_at = NOW()`,
+    [
+      invoice.id,
+      invoice.numero || null,
+      data,
+      invoice.cliente?.ragioneSociale || null,
+      invoice.cliente?.email || null,
+      totale,
+      invoice.origine || 'manuale',
+      invoice,
+    ]
+  );
   return invoice;
 }
 
-function deleteInvoice(id) {
-  const list = getInvoices().filter((i) => i.id !== id);
-  saveInvoices(list);
+async function deleteInvoice(id) {
+  await db.query('DELETE FROM invoices WHERE id = $1', [id]);
 }
 
-function getSettings() {
-  const current = readJSON(SETTINGS_FILE, DEFAULT_SETTINGS);
-  // Merge with defaults to account for newly added fields
+async function markEmailSent(id, when = new Date()) {
+  await db.query('UPDATE invoices SET email_sent_at = $2, updated_at = NOW() WHERE id = $1', [
+    id,
+    when,
+  ]);
+}
+
+function mergeSettings(current) {
+  const c = current || {};
   return {
-    azienda: { ...DEFAULT_SETTINGS.azienda, ...(current.azienda || {}) },
-    fatturazione: { ...DEFAULT_SETTINGS.fatturazione, ...(current.fatturazione || {}) },
-    woocommerce: { ...DEFAULT_SETTINGS.woocommerce, ...(current.woocommerce || {}) },
+    azienda: { ...DEFAULT_SETTINGS.azienda, ...(c.azienda || {}) },
+    fatturazione: { ...DEFAULT_SETTINGS.fatturazione, ...(c.fatturazione || {}) },
+    woocommerce: { ...DEFAULT_SETTINGS.woocommerce, ...(c.woocommerce || {}) },
+    email: { ...DEFAULT_SETTINGS.email, ...(c.email || {}) },
   };
 }
 
-function saveSettings(settings) {
-  const merged = {
-    ...getSettings(),
-    ...settings,
-  };
-  writeJSON(SETTINGS_FILE, merged);
-  return merged;
+async function getSettings() {
+  const { rows } = await db.query("SELECT value FROM settings WHERE key = 'app'");
+  const stored = rows[0]?.value || {};
+  return mergeSettings(stored);
 }
 
-function nextInvoiceNumber() {
-  const s = getSettings();
+async function saveSettings(partial) {
+  const current = await getSettings();
+  const next = mergeSettings({
+    azienda: { ...current.azienda, ...(partial.azienda || {}) },
+    fatturazione: { ...current.fatturazione, ...(partial.fatturazione || {}) },
+    woocommerce: { ...current.woocommerce, ...(partial.woocommerce || {}) },
+    email: { ...current.email, ...(partial.email || {}) },
+  });
+  await db.query(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES ('app', $1, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [next]
+  );
+  return next;
+}
+
+async function nextInvoiceNumber() {
+  const s = await getSettings();
   const num = s.fatturazione.prossimoNumero || 1;
   const prefix = s.fatturazione.prefissoNumero || '';
   const year = new Date().getFullYear();
   return `${prefix}${year}-${String(num).padStart(4, '0')}`;
 }
 
-function bumpInvoiceCounter() {
-  const s = getSettings();
+async function bumpInvoiceCounter() {
+  const s = await getSettings();
   s.fatturazione.prossimoNumero = (s.fatturazione.prossimoNumero || 1) + 1;
-  saveSettings(s);
+  await saveSettings(s);
+}
+
+async function migrateLegacyJsonIfNeeded() {
+  if (fs.existsSync(MIGRATION_DONE_FILE)) return;
+
+  let imported = 0;
+  let settingsImported = false;
+
+  if (fs.existsSync(LEGACY_INVOICES_FILE)) {
+    const { rows } = await db.query('SELECT COUNT(*)::int AS n FROM invoices');
+    if (rows[0].n === 0) {
+      try {
+        const list = JSON.parse(fs.readFileSync(LEGACY_INVOICES_FILE, 'utf8'));
+        if (Array.isArray(list)) {
+          for (const inv of list) {
+            if (inv && inv.id) {
+              await upsertInvoice(inv);
+              imported++;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[storage] migrazione invoices.json fallita:', err.message);
+      }
+    }
+  }
+
+  if (fs.existsSync(LEGACY_SETTINGS_FILE)) {
+    const { rows } = await db.query("SELECT 1 FROM settings WHERE key = 'app'");
+    if (rows.length === 0) {
+      try {
+        const s = JSON.parse(fs.readFileSync(LEGACY_SETTINGS_FILE, 'utf8'));
+        await saveSettings(s || {});
+        settingsImported = true;
+      } catch (err) {
+        console.error('[storage] migrazione settings.json fallita:', err.message);
+      }
+    }
+  }
+
+  if (imported || settingsImported) {
+    console.log(
+      `[storage] migrazione completata: ${imported} fattura/e, settings=${settingsImported ? 'sì' : 'no'}`
+    );
+  }
+
+  try {
+    fs.writeFileSync(MIGRATION_DONE_FILE, new Date().toISOString(), 'utf8');
+  } catch (_) {
+    /* ignore — no persistent volume */
+  }
 }
 
 module.exports = {
   init,
   getInvoices,
-  saveInvoices,
   getInvoice,
   upsertInvoice,
   deleteInvoice,
+  markEmailSent,
   getSettings,
   saveSettings,
   nextInvoiceNumber,

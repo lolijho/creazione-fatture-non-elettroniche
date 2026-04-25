@@ -308,6 +308,15 @@
             <label>Versione API
               <input name="woocommerce.version" placeholder="wc/v3" />
             </label>
+
+            <h3 style="margin-top:20px">Email (template)</h3>
+            <p class="muted">SMTP host/credenziali si configurano via variabili d'ambiente. Placeholder disponibili: <code>{numero}</code> <code>{data}</code> <code>{cliente}</code> <code>{azienda}</code> <code>{totale}</code> <code>{scadenza}</code>.</p>
+            <label>Oggetto email
+              <input name="email.oggettoTemplate" placeholder="Fattura {numero} - {azienda}" />
+            </label>
+            <label>Corpo email
+              <textarea name="email.corpoTemplate" rows="4"></textarea>
+            </label>
           </div>
         </div>
       </section>

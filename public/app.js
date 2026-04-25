@@ -118,15 +118,19 @@ async function renderDashboard() {
         <td class="right">${EUR(inv.totali?.totale)}</td>
         <td class="right">
           <button class="btn" data-pdf="${inv.id}">PDF</button>
+          <button class="btn" data-email="${inv.id}" data-email-to="${escapeAttr(inv.cliente?.email || '')}">Invia email</button>
           <button class="btn" data-edit="${inv.id}">Modifica</button>
           <button class="btn danger" data-del="${inv.id}">Elimina</button>
         </td>`;
       tbody.appendChild(tr);
     });
     tbody.onclick = async (e) => {
-      const pdf = e.target.dataset.pdf;
-      const edit = e.target.dataset.edit;
-      const del = e.target.dataset.del;
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const pdf = btn.dataset.pdf;
+      const edit = btn.dataset.edit;
+      const del = btn.dataset.del;
+      const email = btn.dataset.email;
       if (pdf) window.open(`/api/invoices/${pdf}/pdf`, '_blank');
       if (edit) {
         const inv = await api.json(`/api/invoices/${edit}`);
@@ -139,6 +143,26 @@ async function renderDashboard() {
         await fetch(`/api/invoices/${del}`, { method: 'DELETE' });
         toast('Fattura eliminata', 'ok');
         renderDashboard();
+      }
+      if (email) {
+        const defaultTo = btn.dataset.emailTo || '';
+        const to = prompt('Inviare la fattura a:', defaultTo);
+        if (!to) return;
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Invio…';
+        try {
+          await api.json(`/api/invoices/${email}/send-email`, {
+            method: 'POST',
+            body: JSON.stringify({ to }),
+          });
+          toast(`Fattura inviata a ${to}`, 'ok');
+        } catch (err) {
+          toast(err.message, 'err');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = original;
+        }
       }
     };
   } catch (err) {

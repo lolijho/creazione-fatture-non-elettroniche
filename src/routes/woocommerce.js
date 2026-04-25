@@ -9,7 +9,7 @@ const router = express.Router();
 
 router.get('/test', async (req, res, next) => {
   try {
-    const settings = storage.getSettings();
+    const settings = await storage.getSettings();
     const result = await wc.testConnection(settings);
     res.json(result);
   } catch (err) {
@@ -19,7 +19,7 @@ router.get('/test', async (req, res, next) => {
 
 router.get('/orders', async (req, res, next) => {
   try {
-    const settings = storage.getSettings();
+    const settings = await storage.getSettings();
     const result = await wc.fetchOrders(settings, {
       page: Number(req.query.page) || 1,
       perPage: Number(req.query.per_page) || 20,
@@ -34,13 +34,13 @@ router.get('/orders', async (req, res, next) => {
 
 router.post('/orders/:id/import', async (req, res, next) => {
   try {
-    const settings = storage.getSettings();
+    const settings = await storage.getSettings();
     const order = await wc.fetchOrder(settings, req.params.id);
     const input = wc.orderToInvoiceInput(order);
-    const numero = storage.nextInvoiceNumber();
+    const numero = await storage.nextInvoiceNumber();
     const inv = buildInvoice({ ...input, numero });
-    storage.upsertInvoice(inv);
-    storage.bumpInvoiceCounter();
+    await storage.upsertInvoice(inv);
+    await storage.bumpInvoiceCounter();
     res.status(201).json(inv);
   } catch (err) {
     next(describeWcError(err));

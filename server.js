@@ -21,10 +21,10 @@ const dataDir = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : path.join(__dirname, 'data');
 const uploadsDir = path.join(dataDir, 'uploads');
+const pdfDir = path.join(dataDir, 'invoices');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-storage.init();
+if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
 
 // Eagerly initialize auth so any warnings (default password, missing
 // SESSION_SECRET) are logged at startup rather than on first login.
@@ -74,9 +74,36 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(
-    `\nGeneratore fatture non elettroniche in ascolto su http://localhost:${PORT}`
-  );
-  console.log(`Data dir: ${dataDir}\n`);
-});
+async function initWithRetry(maxAttempts = 10) {
+  let delay = 1000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await storage.init();
+      return;
+    } catch (err) {
+      console.error(
+        `[startup] storage init tentativo ${attempt}/${maxAttempts} fallito: ${err.message}`
+      );
+      if (attempt === maxAttempts) throw err;
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 2, 15000);
+    }
+  }
+}
+
+async function start() {
+  try {
+    await initWithRetry();
+  } catch (err) {
+    console.error('[startup] inizializzazione storage fallita definitivamente:', err.message);
+    process.exit(1);
+  }
+  app.listen(PORT, () => {
+    console.log(
+      `\nGeneratore fatture non elettroniche in ascolto su http://localhost:${PORT}`
+    );
+    console.log(`Data dir: ${dataDir}\n`);
+  });
+}
+
+start();
