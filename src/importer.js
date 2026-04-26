@@ -6,42 +6,85 @@ const { parse } = require('csv-parse/sync');
 const XLSX = require('xlsx');
 
 /**
- * Colonne attese (case-insensitive, spazi/accenti normalizzati):
- *   - numero (opzionale): se assente viene generato
- *   - data
- *   - scadenza (opzionale)
- *   - metodo_pagamento (opzionale)
- *   - note (opzionale)
- *   - cliente_ragione_sociale
- *   - cliente_indirizzo, cliente_cap, cliente_citta, cliente_provincia, cliente_paese
- *   - cliente_piva, cliente_cf, cliente_email, cliente_telefono
- *   - descrizione
- *   - codice (opzionale)
- *   - unita_misura (opzionale)
- *   - quantita
- *   - prezzo_unitario
- *   - aliquota_iva
- *   - sconto_pct (opzionale)
- *
- * Più righe con lo stesso "numero" (o stesso cliente+data se numero vuoto)
- * vengono raggruppate in un'unica fattura con più righe.
+ * Campi canonici della fattura. La UI mostra una mappatura
+ * "colonna del file" → "campo canonico".
  */
+const INVOICE_FIELDS = [
+  { key: 'numero', label: 'Numero fattura', section: 'Fattura' },
+  { key: 'data', label: 'Data', section: 'Fattura', required: true },
+  { key: 'scadenza', label: 'Scadenza', section: 'Fattura' },
+  { key: 'metodo_pagamento', label: 'Metodo pagamento', section: 'Fattura' },
+  { key: 'note', label: 'Note', section: 'Fattura' },
+  { key: 'cliente_ragione_sociale', label: 'Cliente: Ragione sociale', section: 'Cliente', required: true },
+  { key: 'cliente_indirizzo', label: 'Cliente: Indirizzo', section: 'Cliente' },
+  { key: 'cliente_cap', label: 'Cliente: CAP', section: 'Cliente' },
+  { key: 'cliente_citta', label: 'Cliente: Città', section: 'Cliente' },
+  { key: 'cliente_provincia', label: 'Cliente: Provincia', section: 'Cliente' },
+  { key: 'cliente_paese', label: 'Cliente: Paese', section: 'Cliente' },
+  { key: 'cliente_piva', label: 'Cliente: P.IVA', section: 'Cliente' },
+  { key: 'cliente_cf', label: 'Cliente: Codice fiscale', section: 'Cliente' },
+  { key: 'cliente_email', label: 'Cliente: Email', section: 'Cliente' },
+  { key: 'cliente_telefono', label: 'Cliente: Telefono', section: 'Cliente' },
+  { key: 'descrizione', label: 'Riga: Descrizione', section: 'Riga', required: true },
+  { key: 'codice', label: 'Riga: Codice', section: 'Riga' },
+  { key: 'unita_misura', label: 'Riga: Unità di misura', section: 'Riga' },
+  { key: 'quantita', label: 'Riga: Quantità', section: 'Riga', required: true },
+  { key: 'prezzo_unitario', label: 'Riga: Prezzo unitario', section: 'Riga', required: true },
+  { key: 'aliquota_iva', label: 'Riga: Aliquota IVA %', section: 'Riga' },
+  { key: 'sconto_pct', label: 'Riga: Sconto %', section: 'Riga' },
+];
+
+// Aliasi noti: una intestazione che normalizzata combacia con uno di questi
+// alias viene mappata sul campo canonico corrispondente.
+const FIELD_ALIASES = {
+  numero: ['numero', 'n_fattura', 'n_doc', 'numero_fattura', 'invoice_number', 'fattura'],
+  data: ['data', 'data_fattura', 'date', 'data_documento'],
+  scadenza: ['scadenza', 'data_scadenza', 'due_date'],
+  metodo_pagamento: ['metodo_pagamento', 'metodo_di_pagamento', 'pagamento', 'payment_method'],
+  note: ['note', 'annotazioni', 'notes', 'descrizione_aggiuntiva'],
+  cliente_ragione_sociale: [
+    'cliente_ragione_sociale',
+    'cliente',
+    'ragione_sociale',
+    'cliente_nome',
+    'nome_cliente',
+    'company',
+    'customer',
+    'customer_name',
+    'denominazione',
+  ],
+  cliente_indirizzo: ['cliente_indirizzo', 'indirizzo', 'address', 'via'],
+  cliente_cap: ['cliente_cap', 'cap', 'zip', 'postal_code'],
+  cliente_citta: ['cliente_citta', 'citta', 'city', 'comune'],
+  cliente_provincia: ['cliente_provincia', 'provincia', 'pr', 'state'],
+  cliente_paese: ['cliente_paese', 'paese', 'nazione', 'country'],
+  cliente_piva: ['cliente_piva', 'cliente_partita_iva', 'p_iva', 'partita_iva', 'piva', 'vat'],
+  cliente_cf: ['cliente_cf', 'cliente_codice_fiscale', 'codice_fiscale', 'cf', 'tax_id'],
+  cliente_email: ['cliente_email', 'email', 'mail', 'email_cliente'],
+  cliente_telefono: ['cliente_telefono', 'telefono', 'phone', 'tel'],
+  descrizione: ['descrizione', 'description', 'prodotto', 'item', 'articolo', 'voce'],
+  codice: ['codice', 'sku', 'code', 'codice_articolo', 'codice_prodotto'],
+  unita_misura: ['unita_misura', 'um', 'unita', 'unit'],
+  quantita: ['quantita', 'qta', 'qty', 'quantity', 'q_ta'],
+  prezzo_unitario: [
+    'prezzo_unitario',
+    'prezzo',
+    'price',
+    'unit_price',
+    'importo_unitario',
+    'costo',
+  ],
+  aliquota_iva: ['aliquota_iva', 'iva', 'aliquota', 'vat_rate', 'tax'],
+  sconto_pct: ['sconto_pct', 'sconto', 'discount', 'sconto_percentuale'],
+};
 
 function normalizeKey(k) {
   return String(k || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
-}
-
-function normalizeRow(row) {
-  const out = {};
-  Object.keys(row).forEach((k) => {
-    out[normalizeKey(k)] = typeof row[k] === 'string' ? row[k].trim() : row[k];
-  });
-  return out;
 }
 
 function parseFile(filePath, originalName) {
@@ -75,6 +118,45 @@ function detectDelimiter(sample) {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] || ',';
 }
 
+function getHeaders(rows) {
+  const headers = new Set();
+  for (const r of rows) Object.keys(r).forEach((k) => headers.add(k));
+  return Array.from(headers);
+}
+
+function suggestMapping(headers) {
+  const mapping = {};
+  const normalizedToOriginal = new Map();
+  for (const h of headers) {
+    const n = normalizeKey(h);
+    if (!normalizedToOriginal.has(n)) normalizedToOriginal.set(n, h);
+  }
+  for (const field of INVOICE_FIELDS) {
+    const aliases = FIELD_ALIASES[field.key] || [field.key];
+    for (const alias of aliases) {
+      const original = normalizedToOriginal.get(alias);
+      if (original) {
+        mapping[field.key] = original;
+        break;
+      }
+    }
+  }
+  return mapping;
+}
+
+function applyMapping(rows, mapping) {
+  const entries = Object.entries(mapping || {}).filter(([, src]) => src);
+  return rows.map((row) => {
+    const out = {};
+    for (const [canonical, srcHeader] of entries) {
+      let val = row[srcHeader];
+      if (typeof val === 'string') val = val.trim();
+      out[canonical] = val;
+    }
+    return out;
+  });
+}
+
 function toNumber(v) {
   if (v == null || v === '') return 0;
   if (typeof v === 'number') return v;
@@ -90,14 +172,11 @@ function toDate(v) {
   if (!v) return '';
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   if (typeof v === 'number') {
-    // Excel serial date
     const utc = new Date(Math.round((v - 25569) * 86400 * 1000));
     return utc.toISOString().slice(0, 10);
   }
   const s = String(v).trim();
-  // try ISO
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  // try dd/mm/yyyy or dd-mm-yyyy
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
     const [, d, mo, y] = m;
@@ -114,7 +193,7 @@ function groupKey(row) {
 
 function rowsToInvoices(rows) {
   const groups = new Map();
-  rows.map(normalizeRow).forEach((r) => {
+  rows.forEach((r) => {
     if (!r.descrizione && !r.cliente_ragione_sociale) return;
     const key = groupKey(r);
     if (!groups.has(key)) {
@@ -132,8 +211,8 @@ function rowsToInvoices(rows) {
           citta: r.cliente_citta || '',
           provincia: r.cliente_provincia || '',
           paese: r.cliente_paese || 'Italia',
-          partitaIva: r.cliente_piva || r.cliente_partita_iva || '',
-          codiceFiscale: r.cliente_cf || r.cliente_codice_fiscale || '',
+          partitaIva: r.cliente_piva || '',
+          codiceFiscale: r.cliente_cf || '',
           email: r.cliente_email || '',
           telefono: r.cliente_telefono || '',
         },
@@ -147,7 +226,8 @@ function rowsToInvoices(rows) {
         unitaMisura: r.unita_misura || 'pz',
         quantita: toNumber(r.quantita) || 1,
         prezzoUnitario: toNumber(r.prezzo_unitario),
-        aliquotaIva: r.aliquota_iva === '' || r.aliquota_iva == null ? 22 : toNumber(r.aliquota_iva),
+        aliquotaIva:
+          r.aliquota_iva === '' || r.aliquota_iva == null ? 22 : toNumber(r.aliquota_iva),
         scontoPct: toNumber(r.sconto_pct),
       });
     }
@@ -155,12 +235,37 @@ function rowsToInvoices(rows) {
   return Array.from(groups.values());
 }
 
-function importFromFile(filePath, originalName) {
+function parseHeaders(filePath, originalName) {
   const rows = parseFile(filePath, originalName);
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('File vuoto o formato non riconosciuto');
   }
-  return rowsToInvoices(rows);
+  const headers = getHeaders(rows);
+  return {
+    headers,
+    suggestedMapping: suggestMapping(headers),
+    fields: INVOICE_FIELDS,
+    sampleRows: rows.slice(0, 3),
+  };
 }
 
-module.exports = { importFromFile, rowsToInvoices };
+function importFromFile(filePath, originalName, mapping) {
+  const rows = parseFile(filePath, originalName);
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('File vuoto o formato non riconosciuto');
+  }
+  const headers = getHeaders(rows);
+  const finalMapping =
+    mapping && Object.keys(mapping).length ? mapping : suggestMapping(headers);
+  const mapped = applyMapping(rows, finalMapping);
+  return rowsToInvoices(mapped);
+}
+
+module.exports = {
+  importFromFile,
+  parseHeaders,
+  rowsToInvoices,
+  applyMapping,
+  suggestMapping,
+  INVOICE_FIELDS,
+};

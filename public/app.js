@@ -12,6 +12,10 @@ const state = {
   editing: null, // invoice under edit
   righe: [],
   importPreview: null,
+  importMapping: null,   // { canonicalKey: csvHeader }
+  importHeaders: null,   // [csvHeader, ...]
+  importFields: null,    // [{key,label,section,required}, ...]
+  importSampleRows: null,
 };
 
 function handleAuthError(res) {
@@ -326,33 +330,163 @@ async function previewInvoicePDF() {
 
 // ========== Import ==========
 function renderImport() {
+  state.importPreview = null;
+  state.importMapping = null;
+  state.importHeaders = null;
+  state.importFields = null;
+  state.importSampleRows = null;
   const fileInput = $('#import-file');
-  $('#btn-preview-import').onclick = async () => {
+
+  $('#btn-load-headers').onclick = async () => {
     if (!fileInput.files[0]) return toast('Seleziona un file', 'err');
     const fd = new FormData();
     fd.append('file', fileInput.files[0]);
     try {
-      const res = await api.form('/api/import/preview', fd);
-      state.importPreview = res;
+      const res = await api.form('/api/import/headers', fd);
+      state.importHeaders = res.headers || [];
+      state.importFields = res.fields || [];
+      state.importMapping = { ...(res.suggestedMapping || {}) };
+      state.importSampleRows = res.sampleRows || [];
+      state.importPreview = null;
+      renderImportMapping();
       renderImportPreview();
-      $('#btn-commit-import').disabled = false;
-      toast(`Trovate ${res.count} fattura/e`, 'ok');
+      const auto = Object.keys(res.suggestedMapping || {}).length;
+      toast(`Trovate ${state.importHeaders.length} colonne (${auto} mappate automaticamente)`, 'ok');
     } catch (err) {
       toast(err.message, 'err');
     }
   };
-  $('#btn-commit-import').onclick = async () => {
-    if (!fileInput.files[0]) return;
+}
+
+function renderImportMapping() {
+  const root = $('#import-mapping');
+  if (!state.importHeaders || !state.importFields) {
+    root.innerHTML = '';
+    return;
+  }
+  const sampleFor = (header) => {
+    const sample = (state.importSampleRows || [])
+      .map((r) => r[header])
+      .filter((v) => v !== '' && v != null)
+      .slice(0, 1)[0];
+    return sample == null ? '' : ` — es. "${String(sample).slice(0, 30)}"`;
+  };
+  const headerOptions = ['<option value="">— non mappata —</option>']
+    .concat(
+      state.importHeaders.map(
+        (h) => `<option value="${escapeAttr(h)}">${escapeHtml(h)}${escapeHtml(sampleFor(h))}</option>`
+      )
+    )
+    .join('');
+
+  const sections = {};
+  state.importFields.forEach((f) => {
+    sections[f.section] = sections[f.section] || [];
+    sections[f.section].push(f);
+  });
+
+  const sectionsHtml = Object.entries(sections)
+    .map(([section, fields]) => {
+      const rows = fields
+        .map((f) => {
+          const current = state.importMapping[f.key] || '';
+          // Re-render the options with the right one selected
+          const opts = ['<option value="">— non mappata —</option>']
+            .concat(
+              state.importHeaders.map((h) => {
+                const sel = h === current ? ' selected' : '';
+                return `<option value="${escapeAttr(h)}"${sel}>${escapeHtml(h)}${escapeHtml(sampleFor(h))}</option>`;
+              })
+            )
+            .join('');
+          const req = f.required ? '<span class="req" title="obbligatorio">*</span>' : '';
+          return `
+            <tr>
+              <td><label>${escapeHtml(f.label)} ${req}</label></td>
+              <td>
+                <select data-map-field="${escapeAttr(f.key)}">${opts}</select>
+              </td>
+            </tr>`;
+        })
+        .join('');
+      return `
+        <h4>${escapeHtml(section)}</h4>
+        <table class="table mapping-table">
+          <thead><tr><th>Campo fattura</th><th>Colonna nel file</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    })
+    .join('');
+
+  root.innerHTML = `
+    <div class="card">
+      <div class="row-between">
+        <h3>Mappatura colonne</h3>
+        <div class="btn-group">
+          <button class="btn" id="btn-mapping-reset">Ripristina suggerite</button>
+          <button class="btn primary" id="btn-mapping-preview">Genera anteprima</button>
+        </div>
+      </div>
+      <p class="muted">Associa ogni colonna del file al campo della fattura. Le voci marcate <span class="req">*</span> sono necessarie per generare almeno una fattura.</p>
+      ${sectionsHtml}
+    </div>`;
+
+  root.querySelectorAll('select[data-map-field]').forEach((sel) => {
+    sel.onchange = () => {
+      const key = sel.dataset.mapField;
+      const val = sel.value;
+      if (val) state.importMapping[key] = val;
+      else delete state.importMapping[key];
+    };
+  });
+
+  $('#btn-mapping-reset').onclick = async () => {
     const fd = new FormData();
-    fd.append('file', fileInput.files[0]);
+    fd.append('file', $('#import-file').files[0]);
     try {
-      const res = await api.form('/api/import/commit', fd);
-      toast(`Salvate ${res.count} fattura/e`, 'ok');
-      setView('dashboard');
-    } catch (err) {
-      toast(err.message, 'err');
-    }
+      const res = await api.form('/api/import/headers', fd);
+      state.importMapping = { ...(res.suggestedMapping || {}) };
+      renderImportMapping();
+      toast('Mappatura suggerita ripristinata', 'ok');
+    } catch (err) { toast(err.message, 'err'); }
   };
+
+  $('#btn-mapping-preview').onclick = runImportPreview;
+}
+
+async function runImportPreview() {
+  const file = $('#import-file').files[0];
+  if (!file) return toast('Seleziona un file', 'err');
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('mapping', JSON.stringify(state.importMapping || {}));
+  try {
+    const res = await api.form('/api/import/preview', fd);
+    state.importPreview = res;
+    renderImportPreview();
+    if (!res.count) {
+      toast('Nessuna fattura trovata: verifica la mappatura dei campi obbligatori', 'err');
+    } else {
+      toast(`Trovate ${res.count} fattura/e`, 'ok');
+    }
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+}
+
+async function runImportCommit() {
+  const file = $('#import-file').files[0];
+  if (!file) return toast('Seleziona un file', 'err');
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('mapping', JSON.stringify(state.importMapping || {}));
+  try {
+    const res = await api.form('/api/import/commit', fd);
+    toast(`Salvate ${res.count} fattura/e`, 'ok');
+    setView('dashboard');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
 }
 
 function renderImportPreview() {
@@ -370,12 +504,17 @@ function renderImportPreview() {
   `).join('');
   root.innerHTML = `
     <div class="card">
-      <h3>Anteprima import (${data.count})</h3>
+      <div class="row-between">
+        <h3>Anteprima import (${data.count})</h3>
+        <button class="btn primary" id="btn-commit-import" ${data.count ? '' : 'disabled'}>Importa e salva</button>
+      </div>
       <table class="table">
         <thead><tr><th>Numero</th><th>Data</th><th>Cliente</th><th>Righe</th><th class="right">Totale</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+  const commitBtn = $('#btn-commit-import');
+  if (commitBtn) commitBtn.onclick = runImportCommit;
 }
 
 // ========== WooCommerce ==========

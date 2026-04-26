@@ -157,6 +157,13 @@ input:focus, textarea:focus, select:focus { outline: 2px solid rgba(43,108,176,0
 
 .uploader { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
+.mapping-table { margin-bottom: 14px; }
+.mapping-table th { width: 50%; }
+.mapping-table td { padding: 6px 8px; }
+.mapping-table select { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.mapping-table label { display: inline; color: var(--ink); }
+.req { color: var(--danger); margin-left: 2px; font-weight: 600; }
+
 .badge {
   display: inline-block;
   padding: 2px 8px;

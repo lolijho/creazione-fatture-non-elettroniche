@@ -7,7 +7,7 @@ const multer = require('multer');
 
 const storage = require('../storage');
 const { buildInvoice } = require('../invoice');
-const { importFromFile } = require('../importer');
+const { importFromFile, parseHeaders } = require('../importer');
 
 const router = express.Router();
 
@@ -24,17 +24,24 @@ const upload = multer({
   },
 });
 
-// Preview: parse file, return parsed invoices without saving
-router.post('/preview', upload.single('file'), (req, res, next) => {
+function parseMapping(req) {
+  const raw = req.body?.mapping;
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+// Inspect: parse file headers + suggested mapping (no parsing into invoices)
+router.post('/headers', upload.single('file'), (req, res, next) => {
   const file = req.file;
   try {
     if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
-    const invoices = importFromFile(file.path, file.originalname);
-    const enriched = invoices.map((inv) => buildInvoice({
-      ...inv,
-      numero: inv.numero || '(auto)',
-    }));
-    res.json({ count: enriched.length, invoices: enriched });
+    const result = parseHeaders(file.path, file.originalname);
+    res.json(result);
   } catch (err) {
     next(err);
   } finally {
@@ -42,12 +49,31 @@ router.post('/preview', upload.single('file'), (req, res, next) => {
   }
 });
 
-// Commit: parse and save invoices
+// Preview: parse file with given mapping, return parsed invoices without saving
+router.post('/preview', upload.single('file'), (req, res, next) => {
+  const file = req.file;
+  try {
+    if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
+    const mapping = parseMapping(req);
+    const invoices = importFromFile(file.path, file.originalname, mapping);
+    const enriched = invoices.map((inv) =>
+      buildInvoice({ ...inv, numero: inv.numero || '(auto)' })
+    );
+    res.json({ count: enriched.length, invoices: enriched, mapping });
+  } catch (err) {
+    next(err);
+  } finally {
+    if (file) fs.unlink(file.path, () => {});
+  }
+});
+
+// Commit: parse file with given mapping and save invoices
 router.post('/commit', upload.single('file'), async (req, res, next) => {
   const file = req.file;
   try {
     if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
-    const parsed = importFromFile(file.path, file.originalname);
+    const mapping = parseMapping(req);
+    const parsed = importFromFile(file.path, file.originalname, mapping);
     const saved = [];
     for (const inv of parsed) {
       const numero = inv.numero || (await storage.nextInvoiceNumber());

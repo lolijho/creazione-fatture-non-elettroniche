@@ -162,16 +162,16 @@
       <section class="view">
         <h2>Import da CSV / Excel</h2>
         <div class="card">
-          <p>Carica un file <code>.csv</code>, <code>.xlsx</code> o <code>.ods</code>. Le righe con lo stesso <code>numero</code> (o stesso cliente+data) vengono raggruppate in una fattura con più righe.</p>
+          <p>Carica un file <code>.csv</code>, <code>.xlsx</code> o <code>.ods</code>. Dopo l'upload puoi mappare ogni colonna del file al campo della fattura. Le righe con lo stesso <code>numero</code> (o stesso cliente+data) vengono raggruppate in una fattura con più righe.</p>
           <p>
             <a href="/template-fatture.csv" download>Scarica template CSV di esempio</a>
           </p>
           <div class="uploader">
             <input type="file" id="import-file" accept=".csv,.xlsx,.xls,.ods,.txt" />
-            <button class="btn" id="btn-preview-import">Anteprima</button>
-            <button class="btn primary" id="btn-commit-import" disabled>Importa e salva</button>
+            <button class="btn primary" id="btn-load-headers">Carica colonne</button>
           </div>
         </div>
+        <div id="import-mapping"></div>
         <div id="import-preview"></div>
       </section>
     </template>
