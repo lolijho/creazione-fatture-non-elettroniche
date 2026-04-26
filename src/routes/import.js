@@ -35,6 +35,11 @@ function parseMapping(req) {
   }
 }
 
+function parseOpts(req) {
+  const fmt = req.body?.numberFormat;
+  return { numberFormat: fmt === 'comma' ? 'comma' : 'dot' };
+}
+
 // Inspect: parse file headers + suggested mapping (no parsing into invoices)
 router.post('/headers', upload.single('file'), (req, res, next) => {
   const file = req.file;
@@ -55,11 +60,12 @@ router.post('/preview', upload.single('file'), (req, res, next) => {
   try {
     if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
     const mapping = parseMapping(req);
-    const invoices = importFromFile(file.path, file.originalname, mapping);
+    const opts = parseOpts(req);
+    const invoices = importFromFile(file.path, file.originalname, mapping, opts);
     const enriched = invoices.map((inv) =>
       buildInvoice({ ...inv, numero: inv.numero || '(auto)' })
     );
-    res.json({ count: enriched.length, invoices: enriched, mapping });
+    res.json({ count: enriched.length, invoices: enriched, mapping, numberFormat: opts.numberFormat });
   } catch (err) {
     next(err);
   } finally {
@@ -73,7 +79,8 @@ router.post('/commit', upload.single('file'), async (req, res, next) => {
   try {
     if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
     const mapping = parseMapping(req);
-    const parsed = importFromFile(file.path, file.originalname, mapping);
+    const opts = parseOpts(req);
+    const parsed = importFromFile(file.path, file.originalname, mapping, opts);
     const saved = [];
     for (const inv of parsed) {
       const numero = inv.numero || (await storage.nextInvoiceNumber());

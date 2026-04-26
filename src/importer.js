@@ -157,13 +157,28 @@ function applyMapping(rows, mapping) {
   });
 }
 
-function toNumber(v) {
+function toNumber(v, format) {
   if (v == null || v === '') return 0;
   if (typeof v === 'number') return v;
-  const s = String(v)
-    .replace(/\s/g, '')
-    .replace(/\./g, '')
-    .replace(',', '.');
+  let s = String(v).replace(/\s/g, '').replace(/[€$£]/g, '');
+  if (format === 'comma') {
+    // Italian style: dot = thousands separator, comma = decimal
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else {
+    // Default: dot = decimal separator. Strip thousands commas only when
+    // they appear with three-digit groups (e.g. "1,234.56" → "1234.56").
+    if (/,\d{3}(\D|$)/.test(s) && /\.\d+/.test(s)) {
+      s = s.replace(/,/g, '');
+    } else {
+      // No clear thousands grouping: leave dots as decimals, treat a lone
+      // comma as decimal (e.g. "365,34" still becomes 365.34 even in dot mode)
+      if (s.indexOf('.') === -1 && s.indexOf(',') !== -1) {
+        s = s.replace(',', '.');
+      } else {
+        s = s.replace(/,/g, '');
+      }
+    }
+  }
   const n = Number(s);
   return isNaN(n) ? 0 : n;
 }
@@ -191,7 +206,9 @@ function groupKey(row) {
   return `auto:${row.cliente_ragione_sociale || ''}|${row.data || ''}`;
 }
 
-function rowsToInvoices(rows) {
+function rowsToInvoices(rows, opts = {}) {
+  const fmt = opts.numberFormat === 'comma' ? 'comma' : 'dot';
+  const num = (v) => toNumber(v, fmt);
   const groups = new Map();
   rows.forEach((r) => {
     if (!r.descrizione && !r.cliente_ragione_sociale) return;
@@ -224,11 +241,11 @@ function rowsToInvoices(rows) {
         descrizione: r.descrizione,
         codice: r.codice || '',
         unitaMisura: r.unita_misura || 'pz',
-        quantita: toNumber(r.quantita) || 1,
-        prezzoUnitario: toNumber(r.prezzo_unitario),
+        quantita: num(r.quantita) || 1,
+        prezzoUnitario: num(r.prezzo_unitario),
         aliquotaIva:
-          r.aliquota_iva === '' || r.aliquota_iva == null ? 22 : toNumber(r.aliquota_iva),
-        scontoPct: toNumber(r.sconto_pct),
+          r.aliquota_iva === '' || r.aliquota_iva == null ? 22 : num(r.aliquota_iva),
+        scontoPct: num(r.sconto_pct),
       });
     }
   });
@@ -249,7 +266,7 @@ function parseHeaders(filePath, originalName) {
   };
 }
 
-function importFromFile(filePath, originalName, mapping) {
+function importFromFile(filePath, originalName, mapping, opts = {}) {
   const rows = parseFile(filePath, originalName);
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('File vuoto o formato non riconosciuto');
@@ -258,7 +275,7 @@ function importFromFile(filePath, originalName, mapping) {
   const finalMapping =
     mapping && Object.keys(mapping).length ? mapping : suggestMapping(headers);
   const mapped = applyMapping(rows, finalMapping);
-  return rowsToInvoices(mapped);
+  return rowsToInvoices(mapped, opts);
 }
 
 module.exports = {

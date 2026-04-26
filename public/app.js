@@ -16,6 +16,7 @@ const state = {
   importHeaders: null,   // [csvHeader, ...]
   importFields: null,    // [{key,label,section,required}, ...]
   importSampleRows: null,
+  importNumberFormat: 'dot', // 'dot' = punto decimale (default); 'comma' = virgola decimale
 };
 
 function handleAuthError(res) {
@@ -335,6 +336,7 @@ function renderImport() {
   state.importHeaders = null;
   state.importFields = null;
   state.importSampleRows = null;
+  state.importNumberFormat = 'dot';
   const fileInput = $('#import-file');
 
   $('#btn-load-headers').onclick = async () => {
@@ -418,6 +420,12 @@ function renderImportMapping() {
     })
     .join('');
 
+  const fmt = state.importNumberFormat || 'dot';
+  const fmtOptions = `
+    <option value="dot"${fmt === 'dot' ? ' selected' : ''}>Punto come decimale — es. 365.34 → € 365,34 (default)</option>
+    <option value="comma"${fmt === 'comma' ? ' selected' : ''}>Virgola come decimale (stile italiano) — es. 1.234,56 → € 1.234,56</option>
+  `;
+
   root.innerHTML = `
     <div class="card">
       <div class="row-between">
@@ -428,6 +436,12 @@ function renderImportMapping() {
         </div>
       </div>
       <p class="muted">Associa ogni colonna del file al campo della fattura. Le voci marcate <span class="req">*</span> sono necessarie per generare almeno una fattura.</p>
+
+      <label style="margin-bottom:14px; max-width:600px;">
+        Formato numerico (per prezzi, quantità, IVA, sconto)
+        <select id="import-number-format">${fmtOptions}</select>
+      </label>
+
       ${sectionsHtml}
     </div>`;
 
@@ -439,6 +453,10 @@ function renderImportMapping() {
       else delete state.importMapping[key];
     };
   });
+
+  $('#import-number-format').onchange = (e) => {
+    state.importNumberFormat = e.target.value === 'comma' ? 'comma' : 'dot';
+  };
 
   $('#btn-mapping-reset').onclick = async () => {
     const fd = new FormData();
@@ -460,6 +478,7 @@ async function runImportPreview() {
   const fd = new FormData();
   fd.append('file', file);
   fd.append('mapping', JSON.stringify(state.importMapping || {}));
+  fd.append('numberFormat', state.importNumberFormat || 'dot');
   try {
     const res = await api.form('/api/import/preview', fd);
     state.importPreview = res;
@@ -480,6 +499,7 @@ async function runImportCommit() {
   const fd = new FormData();
   fd.append('file', file);
   fd.append('mapping', JSON.stringify(state.importMapping || {}));
+  fd.append('numberFormat', state.importNumberFormat || 'dot');
   try {
     const res = await api.form('/api/import/commit', fd);
     toast(`Salvate ${res.count} fattura/e`, 'ok');
