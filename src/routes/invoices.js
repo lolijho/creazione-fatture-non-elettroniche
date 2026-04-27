@@ -151,4 +151,24 @@ router.get('/email/test', async (req, res, next) => {
   }
 });
 
+router.post('/regenerate-pdfs', async (req, res, next) => {
+  try {
+    const settings = await storage.getSettings();
+    const list = await storage.getInvoices();
+    const errors = [];
+    let ok = 0;
+    for (const inv of list) {
+      try {
+        await pdfStore.buildAndStore(inv, settings);
+        ok++;
+      } catch (err) {
+        errors.push({ id: inv.id, numero: inv.numero, error: err.message });
+      }
+    }
+    res.json({ total: list.length, regenerated: ok, errors });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

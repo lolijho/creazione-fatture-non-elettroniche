@@ -609,8 +609,34 @@ async function renderSettings() {
       const values = getFormValues(root);
       await api.json('/api/settings', { method: 'PUT', body: JSON.stringify(values) });
       toast('Impostazioni salvate', 'ok');
+      if (confirm('Vuoi rigenerare i PDF di tutte le fatture esistenti con i nuovi dati aziendali?')) {
+        await regenerateAllPdfs();
+      }
     } catch (err) { toast(err.message, 'err'); }
   };
+
+  $('#btn-regen-pdfs').onclick = async () => {
+    if (!confirm('Rigenero i PDF di tutte le fatture salvate usando i dati aziendali correnti?')) return;
+    await regenerateAllPdfs();
+  };
+}
+
+async function regenerateAllPdfs() {
+  const btn = $('#btn-regen-pdfs');
+  const original = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Rigenero…'; }
+  try {
+    const res = await api.json('/api/invoices/regenerate-pdfs', { method: 'POST' });
+    const errs = res.errors?.length || 0;
+    const msg = errs
+      ? `Rigenerate ${res.regenerated}/${res.total} fatture (${errs} errori)`
+      : `Rigenerate ${res.regenerated}/${res.total} fatture`;
+    toast(msg, errs ? 'err' : 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
 }
 
 // ========== Utils ==========
