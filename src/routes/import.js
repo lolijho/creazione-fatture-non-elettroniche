@@ -55,15 +55,17 @@ router.post('/headers', upload.single('file'), (req, res, next) => {
 });
 
 // Preview: parse file with given mapping, return parsed invoices without saving
-router.post('/preview', upload.single('file'), (req, res, next) => {
+router.post('/preview', upload.single('file'), async (req, res, next) => {
   const file = req.file;
   try {
     if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
     const mapping = parseMapping(req);
     const opts = parseOpts(req);
+    const settings = await storage.getSettings();
+    const senzaIva = !!settings.fatturazione?.senzaIva;
     const invoices = importFromFile(file.path, file.originalname, mapping, opts);
     const enriched = invoices.map((inv) =>
-      buildInvoice({ ...inv, numero: inv.numero || '(auto)' })
+      buildInvoice({ ...inv, numero: inv.numero || '(auto)' }, { senzaIva })
     );
     res.json({ count: enriched.length, invoices: enriched, mapping, numberFormat: opts.numberFormat });
   } catch (err) {
@@ -80,11 +82,13 @@ router.post('/commit', upload.single('file'), async (req, res, next) => {
     if (!file) return res.status(400).json({ error: 'Nessun file caricato' });
     const mapping = parseMapping(req);
     const opts = parseOpts(req);
+    const settings = await storage.getSettings();
+    const senzaIva = !!settings.fatturazione?.senzaIva;
     const parsed = importFromFile(file.path, file.originalname, mapping, opts);
     const saved = [];
     for (const inv of parsed) {
       const numero = inv.numero || (await storage.nextInvoiceNumber());
-      const finalInv = buildInvoice({ ...inv, numero });
+      const finalInv = buildInvoice({ ...inv, numero }, { senzaIva });
       await storage.upsertInvoice(finalInv);
       if (!inv.numero) await storage.bumpInvoiceCounter();
       saved.push(finalInv);

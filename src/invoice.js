@@ -52,8 +52,13 @@ function computeTotals(righe) {
   return totals;
 }
 
-function buildInvoice(input, { numero } = {}) {
-  const righe = (input.righe || []).map(normalizeRiga).filter((r) => r.descrizione);
+function buildInvoice(input, opts = {}) {
+  const senzaIva = !!opts.senzaIva;
+  const numero = opts.numero;
+  const righe = (input.righe || [])
+    .map((r) => (senzaIva ? { ...r, aliquotaIva: 0 } : r))
+    .map(normalizeRiga)
+    .filter((r) => r.descrizione);
   const totali = computeTotals(righe);
 
   return {

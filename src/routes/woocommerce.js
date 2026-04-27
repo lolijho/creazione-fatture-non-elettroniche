@@ -38,7 +38,10 @@ router.post('/orders/:id/import', async (req, res, next) => {
     const order = await wc.fetchOrder(settings, req.params.id);
     const input = wc.orderToInvoiceInput(order);
     const numero = await storage.nextInvoiceNumber();
-    const inv = buildInvoice({ ...input, numero });
+    const inv = buildInvoice(
+      { ...input, numero },
+      { senzaIva: !!settings.fatturazione?.senzaIva }
+    );
     await storage.upsertInvoice(inv);
     await storage.bumpInvoiceCounter();
     res.status(201).json(inv);
