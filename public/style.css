@@ -133,6 +133,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid rgba(43,108,176,0
 .table th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
 .table td.right, .table th.right { text-align: right; }
 .table tbody tr:hover { background: #fafbff; }
+.table tfoot tr.total-row td { padding-top: 14px; border-top: 2px solid var(--border); border-bottom: none; }
 
 .table.righe td { padding: 6px 4px; }
 .table.righe input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
@@ -150,6 +151,18 @@ input:focus, textarea:focus, select:focus { outline: 2px solid rgba(43,108,176,0
 }
 .totals > div { display: flex; justify-content: space-between; align-items: center; }
 .totals .grand { font-size: 18px; padding-top: 6px; border-top: 1px dashed var(--border); }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.stats > div { display: flex; flex-direction: column; gap: 4px; }
+.stats > div > strong { font-size: 18px; }
+.stats .grand > strong { color: var(--primary); }
+@media (max-width: 720px) {
+  .stats { grid-template-columns: 1fr 1fr; }
+}
 
 .muted { color: var(--muted); }
 .center { text-align: center; }

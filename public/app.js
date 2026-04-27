@@ -108,8 +108,10 @@ async function renderDashboard() {
   const tbody = $('#invoices-tbody');
   try {
     const list = await api.json('/api/invoices');
+    updateInvoicesStats(list);
     if (!list.length) {
       tbody.innerHTML = '<tr><td colspan="6" class="muted center">Nessuna fattura. Crea la prima dal pulsante in alto.</td></tr>';
+      $('#invoices-tfoot').innerHTML = '';
       return;
     }
     tbody.innerHTML = '';
@@ -129,6 +131,13 @@ async function renderDashboard() {
         </td>`;
       tbody.appendChild(tr);
     });
+    const totaleList = list.reduce((s, i) => s + (Number(i.totali?.totale) || 0), 0);
+    $('#invoices-tfoot').innerHTML = `
+      <tr class="total-row">
+        <td colspan="4" class="right"><strong>Totale (${list.length} fatture)</strong></td>
+        <td class="right"><strong>${EUR(totaleList)}</strong></td>
+        <td></td>
+      </tr>`;
     tbody.onclick = async (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;
@@ -173,6 +182,26 @@ async function renderDashboard() {
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" class="muted center">Errore: ${escapeHtml(err.message)}</td></tr>`;
   }
+}
+
+function updateInvoicesStats(list) {
+  const tot = list.reduce(
+    (acc, inv) => {
+      acc.imponibile += Number(inv.totali?.imponibile) || 0;
+      acc.iva += Number(inv.totali?.iva) || 0;
+      acc.totale += Number(inv.totali?.totale) || 0;
+      return acc;
+    },
+    { imponibile: 0, iva: 0, totale: 0 }
+  );
+  const set = (id, val) => {
+    const el = $(id);
+    if (el) el.textContent = val;
+  };
+  set('#stat-count', String(list.length));
+  set('#stat-imponibile', EUR(tot.imponibile));
+  set('#stat-iva', EUR(tot.iva));
+  set('#stat-totale', EUR(tot.totale));
 }
 
 // ========== Nuova / Modifica ==========

@@ -37,6 +37,12 @@
           <h2>Archivio fatture</h2>
           <button class="btn primary" data-action="new">+ Nuova fattura</button>
         </div>
+        <div class="card stats" id="invoices-stats">
+          <div><span class="muted">Fatture</span><strong id="stat-count">—</strong></div>
+          <div><span class="muted">Imponibile</span><strong id="stat-imponibile">—</strong></div>
+          <div><span class="muted">IVA</span><strong id="stat-iva">—</strong></div>
+          <div class="grand"><span class="muted">Totale</span><strong id="stat-totale">—</strong></div>
+        </div>
         <div class="card">
           <table class="table">
             <thead>
@@ -52,6 +58,7 @@
             <tbody id="invoices-tbody">
               <tr><td colspan="6" class="muted center">Caricamento…</td></tr>
             </tbody>
+            <tfoot id="invoices-tfoot"></tfoot>
           </table>
         </div>
       </section>
