@@ -32,11 +32,11 @@ const DEFAULT_SETTINGS = {
     prossimoNumero: 1,
     aliquotaIvaDefault: 22,
     valuta: 'EUR',
-    noteDefault: 'Pagamento a 30 giorni dalla data fattura.',
+    noteDefault: 'Payment within 30 days from the invoice date.',
     dichiarazioneNonElettronica:
-      'Documento cartaceo non avente valore di fattura elettronica ai fini del SdI.',
+      'This document is a paper invoice and is not an electronic invoice for the Italian SdI system.',
     senzaIva: false,
-    notaSenzaIva: 'Operazione non soggetta a IVA — fornitore estero.',
+    notaSenzaIva: 'Operation not subject to VAT — foreign supplier.',
   },
   woocommerce: {
     url: '',
@@ -45,15 +45,72 @@ const DEFAULT_SETTINGS = {
     version: 'wc/v3',
   },
   email: {
-    oggettoTemplate: 'Fattura {numero} - {azienda}',
+    oggettoTemplate: 'Invoice {numero} - {azienda}',
     corpoTemplate:
-      'Gentile {cliente},\n\nin allegato la fattura {numero} del {data} per un totale di {totale}.\n\nCordiali saluti,\n{azienda}',
+      'Dear {cliente},\n\nplease find attached invoice {numero} dated {data} for a total of {totale}.\n\nBest regards,\n{azienda}',
   },
 };
 
 async function init() {
   await db.migrate();
   await migrateLegacyJsonIfNeeded();
+  await migrateItalianDefaultsToEnglish();
+}
+
+// One-shot migration: if the user has saved settings whose text fields still
+// contain the previous Italian default values verbatim, replace them with the
+// new English defaults. Custom text the user typed manually is preserved.
+const ITALIAN_TO_ENGLISH_DEFAULTS = {
+  fatturazione: {
+    noteDefault: {
+      from: 'Pagamento a 30 giorni dalla data fattura.',
+      to: 'Payment within 30 days from the invoice date.',
+    },
+    dichiarazioneNonElettronica: {
+      from: 'Documento cartaceo non avente valore di fattura elettronica ai fini del SdI.',
+      to: 'This document is a paper invoice and is not an electronic invoice for the Italian SdI system.',
+    },
+    notaSenzaIva: {
+      from: 'Operazione non soggetta a IVA — fornitore estero.',
+      to: 'Operation not subject to VAT — foreign supplier.',
+    },
+  },
+  email: {
+    oggettoTemplate: {
+      from: 'Fattura {numero} - {azienda}',
+      to: 'Invoice {numero} - {azienda}',
+    },
+    corpoTemplate: {
+      from:
+        'Gentile {cliente},\n\nin allegato la fattura {numero} del {data} per un totale di {totale}.\n\nCordiali saluti,\n{azienda}',
+      to:
+        'Dear {cliente},\n\nplease find attached invoice {numero} dated {data} for a total of {totale}.\n\nBest regards,\n{azienda}',
+    },
+  },
+};
+
+async function migrateItalianDefaultsToEnglish() {
+  const { rows } = await db.query("SELECT value FROM settings WHERE key = 'app'");
+  if (!rows.length) return;
+  const stored = rows[0].value || {};
+  let changed = false;
+  const next = { ...stored };
+  for (const [section, fields] of Object.entries(ITALIAN_TO_ENGLISH_DEFAULTS)) {
+    next[section] = { ...(stored[section] || {}) };
+    for (const [field, { from, to }] of Object.entries(fields)) {
+      if (next[section][field] === from) {
+        next[section][field] = to;
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    await db.query(
+      `UPDATE settings SET value = $1, updated_at = NOW() WHERE key = 'app'`,
+      [next]
+    );
+    console.log('[storage] testi italiani di default migrati a inglese');
+  }
 }
 
 function rowToInvoice(row) {

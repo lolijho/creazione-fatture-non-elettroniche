@@ -96,10 +96,10 @@ async function sendInvoiceEmail({ invoice, settings, pdfBuffer, to }) {
 
   const subject =
     applyTemplate(settings.email?.oggettoTemplate, vars) ||
-    `Fattura ${vars.numero} - ${vars.azienda}`;
+    `Invoice ${vars.numero} - ${vars.azienda}`;
   const text =
     applyTemplate(settings.email?.corpoTemplate, vars) ||
-    `In allegato la fattura ${vars.numero} del ${vars.data}.`;
+    `Please find attached invoice ${vars.numero} dated ${vars.data}.`;
   const html = `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>`;
 
   const safeName = (invoice.numero || invoice.id).replace(/[^a-z0-9-_]+/gi, '_');
