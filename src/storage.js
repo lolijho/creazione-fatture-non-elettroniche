@@ -35,6 +35,8 @@ const DEFAULT_SETTINGS = {
     noteDefault: 'Pagamento a 30 giorni dalla data fattura.',
     dichiarazioneNonElettronica:
       'Documento cartaceo non avente valore di fattura elettronica ai fini del SdI.',
+    senzaIva: false,
+    notaSenzaIva: 'Operazione non soggetta a IVA — fornitore estero.',
   },
   woocommerce: {
     url: '',

@@ -177,6 +177,12 @@ input:focus, textarea:focus, select:focus { outline: 2px solid rgba(43,108,176,0
 .mapping-table label { display: inline; color: var(--ink); }
 .req { color: var(--danger); margin-left: 2px; font-weight: 600; }
 
+body.senza-iva [data-iva] { display: none !important; }
+body.senza-iva .stats { grid-template-columns: 1fr 1fr; }
+@media (max-width: 720px) { body.senza-iva .stats { grid-template-columns: 1fr; } }
+label.checkbox { flex-direction: row; align-items: center; gap: 8px; color: var(--ink); }
+label.checkbox > input { width: 16px; height: 16px; }
+
 .badge {
   display: inline-block;
   padding: 2px 8px;

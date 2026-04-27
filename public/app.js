@@ -11,6 +11,7 @@ const state = {
   view: 'dashboard',
   editing: null, // invoice under edit
   righe: [],
+  settings: null,
   importPreview: null,
   importMapping: null,   // { canonicalKey: csvHeader }
   importHeaders: null,   // [csvHeader, ...]
@@ -65,7 +66,9 @@ function setView(name) {
 
 function setFormValue(root, name, value) {
   const el = $(`[name="${name}"]`, root);
-  if (el) el.value = value == null ? '' : value;
+  if (!el) return;
+  if (el.type === 'checkbox') el.checked = !!value;
+  else el.value = value == null ? '' : value;
 }
 
 function getFormValues(root) {
@@ -78,7 +81,10 @@ function getFormValues(root) {
       cur = cur[keys[i]];
     }
     const k = keys[keys.length - 1];
-    const v = el.type === 'number' ? (el.value === '' ? '' : Number(el.value)) : el.value;
+    let v;
+    if (el.type === 'checkbox') v = el.checked;
+    else if (el.type === 'number') v = el.value === '' ? '' : Number(el.value);
+    else v = el.value;
     cur[k] = v;
   });
   return out;
@@ -98,6 +104,25 @@ function render() {
   if (state.view === 'impostazioni') renderSettings();
 }
 
+async function loadSettings(force = false) {
+  if (state.settings && !force) return state.settings;
+  try {
+    state.settings = await api.json('/api/settings');
+  } catch (_) {
+    state.settings = {};
+  }
+  applySenzaIvaClass();
+  return state.settings;
+}
+
+function isSenzaIva() {
+  return !!state.settings?.fatturazione?.senzaIva;
+}
+
+function applySenzaIvaClass() {
+  document.body.classList.toggle('senza-iva', isSenzaIva());
+}
+
 // ========== Dashboard ==========
 async function renderDashboard() {
   $('[data-action="new"]').onclick = () => {
@@ -107,6 +132,7 @@ async function renderDashboard() {
   };
   const tbody = $('#invoices-tbody');
   try {
+    await loadSettings();
     const list = await api.json('/api/invoices');
     updateInvoicesStats(list);
     if (!list.length) {
@@ -206,13 +232,15 @@ function updateInvoicesStats(list) {
 
 // ========== Nuova / Modifica ==========
 function emptyRiga() {
+  const senza = isSenzaIva();
+  const def = state.settings?.fatturazione?.aliquotaIvaDefault;
   return {
     descrizione: '',
     codice: '',
     unitaMisura: 'pz',
     quantita: 1,
     prezzoUnitario: 0,
-    aliquotaIva: 22,
+    aliquotaIva: senza ? 0 : (def != null && def !== '' ? Number(def) : 22),
     scontoPct: 0,
   };
 }
@@ -264,7 +292,7 @@ function renderRighe() {
       <td><input data-idx="${idx}" data-field="quantita" type="number" step="any" value="${r.quantita}" style="width:70px"/></td>
       <td><input data-idx="${idx}" data-field="prezzoUnitario" type="number" step="0.01" value="${r.prezzoUnitario}" style="width:90px"/></td>
       <td><input data-idx="${idx}" data-field="scontoPct" type="number" step="0.01" value="${r.scontoPct || 0}" style="width:70px"/></td>
-      <td><input data-idx="${idx}" data-field="aliquotaIva" type="number" step="0.01" value="${r.aliquotaIva}" style="width:70px"/></td>
+      <td data-iva><input data-idx="${idx}" data-field="aliquotaIva" type="number" step="0.01" value="${r.aliquotaIva}" style="width:70px"/></td>
       <td class="right" data-total="${idx}">—</td>
       <td><button class="btn danger" data-del-row="${idx}">×</button></td>
     `;
@@ -636,7 +664,9 @@ async function renderSettings() {
   $('#btn-save-settings').onclick = async () => {
     try {
       const values = getFormValues(root);
-      await api.json('/api/settings', { method: 'PUT', body: JSON.stringify(values) });
+      const saved = await api.json('/api/settings', { method: 'PUT', body: JSON.stringify(values) });
+      state.settings = saved;
+      applySenzaIvaClass();
       toast('Impostazioni salvate', 'ok');
       if (confirm('Vuoi rigenerare i PDF di tutte le fatture esistenti con i nuovi dati aziendali?')) {
         await regenerateAllPdfs();
@@ -713,5 +743,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   $$('.tab[data-view]').forEach((t) =>
     t.addEventListener('click', () => setView(t.dataset.view))
   );
+  await loadSettings();
   render();
 });

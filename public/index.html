@@ -39,8 +39,8 @@
         </div>
         <div class="card stats" id="invoices-stats">
           <div><span class="muted">Fatture</span><strong id="stat-count">—</strong></div>
-          <div><span class="muted">Imponibile</span><strong id="stat-imponibile">—</strong></div>
-          <div><span class="muted">IVA</span><strong id="stat-iva">—</strong></div>
+          <div data-iva><span class="muted">Imponibile</span><strong id="stat-imponibile">—</strong></div>
+          <div data-iva><span class="muted">IVA</span><strong id="stat-iva">—</strong></div>
           <div class="grand"><span class="muted">Totale</span><strong id="stat-totale">—</strong></div>
         </div>
         <div class="card">
@@ -149,7 +149,7 @@
                 <th>Q.tà</th>
                 <th>Prezzo</th>
                 <th>Sconto %</th>
-                <th>IVA %</th>
+                <th data-iva>IVA %</th>
                 <th class="right">Totale</th>
                 <th></th>
               </tr>
@@ -157,8 +157,8 @@
             <tbody id="righe-tbody"></tbody>
           </table>
           <div class="totals">
-            <div><span>Imponibile</span><strong id="t-imponibile">€ 0,00</strong></div>
-            <div><span>IVA</span><strong id="t-iva">€ 0,00</strong></div>
+            <div data-iva><span>Imponibile</span><strong id="t-imponibile">€ 0,00</strong></div>
+            <div data-iva><span>IVA</span><strong id="t-iva">€ 0,00</strong></div>
             <div class="grand"><span>Totale</span><strong id="t-totale">€ 0,00</strong></div>
           </div>
         </div>
@@ -298,6 +298,13 @@
                 <input name="fatturazione.valuta" />
               </label>
             </div>
+            <label class="checkbox">
+              <input type="checkbox" name="fatturazione.senzaIva" />
+              Regime senza IVA (nasconde colonne IVA in fatture e PDF)
+            </label>
+            <label>Nota "senza IVA" (stampata nel PDF)
+              <input name="fatturazione.notaSenzaIva" placeholder="Operazione non soggetta a IVA — fornitore estero." />
+            </label>
             <label>Note default
               <textarea name="fatturazione.noteDefault" rows="2"></textarea>
             </label>

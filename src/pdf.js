@@ -117,17 +117,26 @@ function renderClient(doc, invoice) {
     );
 }
 
-function renderTable(doc, invoice) {
+function renderTable(doc, invoice, settings) {
+  const senzaIva = !!settings?.fatturazione?.senzaIva;
   const startY = 300;
-  const cols = [
-    { label: 'Descrizione', x: 40, width: 230, align: 'left' },
-    { label: 'Q.tà', x: 275, width: 35, align: 'right' },
-    { label: 'Prezzo', x: 315, width: 55, align: 'right' },
-    { label: 'Sconto', x: 375, width: 40, align: 'right' },
-    { label: 'IVA %', x: 420, width: 35, align: 'right' },
-    { label: 'Imponibile', x: 460, width: 60, align: 'right' },
-    { label: 'Totale', x: 520, width: 40, align: 'right' },
-  ];
+  const cols = senzaIva
+    ? [
+        { key: 'desc', label: 'Descrizione', x: 40, width: 290, align: 'left' },
+        { key: 'qta', label: 'Q.tà', x: 335, width: 35, align: 'right' },
+        { key: 'prezzo', label: 'Prezzo', x: 375, width: 60, align: 'right' },
+        { key: 'sconto', label: 'Sconto', x: 440, width: 40, align: 'right' },
+        { key: 'totale', label: 'Totale', x: 485, width: 70, align: 'right' },
+      ]
+    : [
+        { key: 'desc', label: 'Descrizione', x: 40, width: 230, align: 'left' },
+        { key: 'qta', label: 'Q.tà', x: 275, width: 35, align: 'right' },
+        { key: 'prezzo', label: 'Prezzo', x: 315, width: 55, align: 'right' },
+        { key: 'sconto', label: 'Sconto', x: 375, width: 40, align: 'right' },
+        { key: 'iva', label: 'IVA %', x: 420, width: 35, align: 'right' },
+        { key: 'imponibile', label: 'Imponibile', x: 460, width: 60, align: 'right' },
+        { key: 'totale', label: 'Totale', x: 520, width: 40, align: 'right' },
+      ];
 
   doc.rect(40, startY - 4, 515, 18).fill('#f0f0f0');
   doc.fillColor('#111').font('Helvetica-Bold').fontSize(9);
@@ -138,38 +147,27 @@ function renderTable(doc, invoice) {
   let y = startY + 20;
   doc.font('Helvetica').fontSize(9).fillColor('#111');
 
+  const colByKey = Object.fromEntries(cols.map((c) => [c.key, c]));
+  const draw = (key, value) => {
+    const c = colByKey[key];
+    if (!c) return;
+    doc.text(value, c.x, y, { width: c.width, align: c.align });
+  };
+
   (invoice.righe || []).forEach((r) => {
     if (y > 720) {
       doc.addPage();
       y = 60;
     }
     const desc = r.codice ? `[${r.codice}] ${r.descrizione}` : r.descrizione;
-    const heights = doc.heightOfString(desc, { width: cols[0].width });
-    doc.text(desc, cols[0].x, y, { width: cols[0].width });
-    doc.text(String(r.quantita), cols[1].x, y, {
-      width: cols[1].width,
-      align: 'right',
-    });
-    doc.text(EUR(r.prezzoUnitario), cols[2].x, y, {
-      width: cols[2].width,
-      align: 'right',
-    });
-    doc.text(r.scontoPct ? `${r.scontoPct}%` : '-', cols[3].x, y, {
-      width: cols[3].width,
-      align: 'right',
-    });
-    doc.text(String(r.aliquotaIva), cols[4].x, y, {
-      width: cols[4].width,
-      align: 'right',
-    });
-    doc.text(EUR(r.imponibile), cols[5].x, y, {
-      width: cols[5].width,
-      align: 'right',
-    });
-    doc.text(EUR(r.totale), cols[6].x, y, {
-      width: cols[6].width,
-      align: 'right',
-    });
+    const heights = doc.heightOfString(desc, { width: colByKey.desc.width });
+    draw('desc', desc);
+    draw('qta', String(r.quantita));
+    draw('prezzo', EUR(r.prezzoUnitario));
+    draw('sconto', r.scontoPct ? `${r.scontoPct}%` : '-');
+    draw('iva', String(r.aliquotaIva));
+    draw('imponibile', EUR(r.imponibile));
+    draw('totale', EUR(r.totale));
     y += Math.max(heights, 12) + 6;
     line(doc, y - 2, '#eeeeee');
   });
@@ -177,31 +175,35 @@ function renderTable(doc, invoice) {
   return y + 10;
 }
 
-function renderTotals(doc, invoice, startY) {
+function renderTotals(doc, invoice, settings, startY) {
   let y = Math.max(startY, 560);
   if (y > 680) {
     doc.addPage();
     y = 60;
   }
+  const senzaIva = !!settings?.fatturazione?.senzaIva;
   const t = invoice.totali || {};
   const boxX = 340;
   doc.font('Helvetica').fontSize(10).fillColor('#111');
-  doc.text('Imponibile:', boxX, y, { width: 120, align: 'right' });
-  doc.text(EUR(t.imponibile), boxX + 125, y, { width: 90, align: 'right' });
-  y += 16;
 
-  Object.entries(t.ripartizioneIva || {}).forEach(([aliq, val]) => {
-    doc.text(`IVA ${aliq}%:`, boxX, y, { width: 120, align: 'right' });
-    doc.text(EUR(val.iva), boxX + 125, y, { width: 90, align: 'right' });
-    y += 14;
-  });
+  if (!senzaIva) {
+    doc.text('Imponibile:', boxX, y, { width: 120, align: 'right' });
+    doc.text(EUR(t.imponibile), boxX + 125, y, { width: 90, align: 'right' });
+    y += 16;
 
-  doc
-    .moveTo(boxX, y + 2)
-    .lineTo(boxX + 215, y + 2)
-    .strokeColor('#aaaaaa')
-    .stroke();
-  y += 8;
+    Object.entries(t.ripartizioneIva || {}).forEach(([aliq, val]) => {
+      doc.text(`IVA ${aliq}%:`, boxX, y, { width: 120, align: 'right' });
+      doc.text(EUR(val.iva), boxX + 125, y, { width: 90, align: 'right' });
+      y += 14;
+    });
+
+    doc
+      .moveTo(boxX, y + 2)
+      .lineTo(boxX + 215, y + 2)
+      .strokeColor('#aaaaaa')
+      .stroke();
+    y += 8;
+  }
 
   doc.font('Helvetica-Bold').fontSize(12);
   doc.text('TOTALE', boxX, y, { width: 120, align: 'right' });
@@ -221,6 +223,15 @@ function renderFooter(doc, invoice, settings, startY) {
   if (settings.azienda?.iban) {
     doc.text(`IBAN: ${settings.azienda.iban}`, 40, y);
     y += 14;
+  }
+  if (settings.fatturazione?.senzaIva && settings.fatturazione?.notaSenzaIva) {
+    y += 4;
+    doc
+      .font('Helvetica-Oblique')
+      .fillColor('#444')
+      .text(settings.fatturazione.notaSenzaIva, 40, y, { width: 515 });
+    y += doc.heightOfString(settings.fatturazione.notaSenzaIva, { width: 515 }) + 6;
+    doc.font('Helvetica').fillColor('#333');
   }
   if (invoice.note) {
     y += 6;
@@ -254,8 +265,8 @@ function generatePDF(invoice, settings) {
       line(doc, 115);
       renderInvoiceMeta(doc, invoice);
       renderClient(doc, invoice);
-      const afterTable = renderTable(doc, invoice);
-      const afterTotals = renderTotals(doc, invoice, afterTable);
+      const afterTable = renderTable(doc, invoice, settings);
+      const afterTotals = renderTotals(doc, invoice, settings, afterTable);
       renderFooter(doc, invoice, settings, afterTotals);
       doc.end();
     } catch (err) {
