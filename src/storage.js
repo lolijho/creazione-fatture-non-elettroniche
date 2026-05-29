@@ -213,6 +213,11 @@ async function nextInvoiceNumber() {
   return `${prefix}${year}-${String(num).padStart(4, '0')}`;
 }
 
+function formatInvoiceNumber({ prefix = '', year, num }) {
+  const y = year || new Date().getFullYear();
+  return `${prefix}${y}-${String(num).padStart(4, '0')}`;
+}
+
 async function bumpInvoiceCounter() {
   const s = await getSettings();
   s.fatturazione.prossimoNumero = (s.fatturazione.prossimoNumero || 1) + 1;
@@ -280,5 +285,6 @@ module.exports = {
   getSettings,
   saveSettings,
   nextInvoiceNumber,
+  formatInvoiceNumber,
   bumpInvoiceCounter,
 };

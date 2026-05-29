@@ -18,6 +18,9 @@ const state = {
   importFields: null,    // [{key,label,section,required}, ...]
   importSampleRows: null,
   importNumberFormat: 'dot', // 'dot' = punto decimale (default); 'comma' = virgola decimale
+  importStartNumber: '',     // numero di partenza per la numerazione batch ('' = usa contatore corrente)
+  importUseInvoiceYear: true,
+  importSortByDate: true,
 };
 
 function handleAuthError(res) {
@@ -394,6 +397,9 @@ function renderImport() {
   state.importFields = null;
   state.importSampleRows = null;
   state.importNumberFormat = 'dot';
+  state.importStartNumber = '';
+  state.importUseInvoiceYear = true;
+  state.importSortByDate = true;
   const fileInput = $('#import-file');
 
   $('#btn-load-headers').onclick = async () => {
@@ -494,10 +500,24 @@ function renderImportMapping() {
       </div>
       <p class="muted">Associa ogni colonna del file al campo della fattura. Le voci marcate <span class="req">*</span> sono necessarie per generare almeno una fattura.</p>
 
-      <label style="margin-bottom:14px; max-width:600px;">
-        Formato numerico (per prezzi, quantità, IVA, sconto)
-        <select id="import-number-format">${fmtOptions}</select>
-      </label>
+      <div class="grid two" style="margin-bottom:14px;">
+        <label>
+          Formato numerico (per prezzi, quantità, IVA, sconto)
+          <select id="import-number-format">${fmtOptions}</select>
+        </label>
+        <label>
+          Numero di partenza per la numerazione
+          <input id="import-start-number" type="number" min="1" placeholder="lascia vuoto = usa contatore corrente" value="${escapeAttr(state.importStartNumber || '')}" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="import-use-invoice-year" ${state.importUseInvoiceYear ? 'checked' : ''} />
+          Usa l'anno della fattura nel numero (es. 2024-0001 per fatture del 2024)
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="import-sort-by-date" ${state.importSortByDate ? 'checked' : ''} />
+          Ordina per data crescente prima di numerare
+        </label>
+      </div>
 
       ${sectionsHtml}
     </div>`;
@@ -513,6 +533,15 @@ function renderImportMapping() {
 
   $('#import-number-format').onchange = (e) => {
     state.importNumberFormat = e.target.value === 'comma' ? 'comma' : 'dot';
+  };
+  $('#import-start-number').oninput = (e) => {
+    state.importStartNumber = e.target.value;
+  };
+  $('#import-use-invoice-year').onchange = (e) => {
+    state.importUseInvoiceYear = e.target.checked;
+  };
+  $('#import-sort-by-date').onchange = (e) => {
+    state.importSortByDate = e.target.checked;
   };
 
   $('#btn-mapping-reset').onclick = async () => {
@@ -536,6 +565,9 @@ async function runImportPreview() {
   fd.append('file', file);
   fd.append('mapping', JSON.stringify(state.importMapping || {}));
   fd.append('numberFormat', state.importNumberFormat || 'dot');
+  if (state.importStartNumber) fd.append('startNumber', String(state.importStartNumber));
+  fd.append('useInvoiceYear', state.importUseInvoiceYear ? 'true' : 'false');
+  fd.append('sortByDate', state.importSortByDate ? 'true' : 'false');
   try {
     const res = await api.form('/api/import/preview', fd);
     state.importPreview = res;
@@ -557,6 +589,9 @@ async function runImportCommit() {
   fd.append('file', file);
   fd.append('mapping', JSON.stringify(state.importMapping || {}));
   fd.append('numberFormat', state.importNumberFormat || 'dot');
+  if (state.importStartNumber) fd.append('startNumber', String(state.importStartNumber));
+  fd.append('useInvoiceYear', state.importUseInvoiceYear ? 'true' : 'false');
+  fd.append('sortByDate', state.importSortByDate ? 'true' : 'false');
   try {
     const res = await api.form('/api/import/commit', fd);
     toast(`Salvate ${res.count} fattura/e`, 'ok');
