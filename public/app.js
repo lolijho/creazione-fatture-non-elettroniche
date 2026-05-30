@@ -212,6 +212,21 @@ async function renderDashboard() {
     state.righe = [emptyRiga()];
     setView('nuova');
   };
+  const exportBtn = $('[data-action="export"]');
+  if (exportBtn) {
+    exportBtn.onclick = () => {
+      const y = state.dashboardYear;
+      const url = y === 'all' ? '/api/invoices/export.zip' : `/api/invoices/export.zip?year=${y}`;
+      const label = y === 'all' ? 'tutte le fatture' : `anno ${y}`;
+      toast(`Preparo l'archivio ZIP (${label})…`, 'ok');
+      const a = document.createElement('a');
+      a.href = url;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+  }
   const tbody = $('#invoices-tbody');
   tbody.onclick = async (e) => {
     const btn = e.target.closest('button');

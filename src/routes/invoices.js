@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const archiver = require('archiver');
 const storage = require('../storage');
 const { buildInvoice } = require('../invoice');
 const { generatePDF } = require('../pdf');
@@ -21,6 +22,57 @@ router.get('/', async (req, res, next) => {
 router.get('/next-number', async (req, res, next) => {
   try {
     res.json({ numero: await storage.nextInvoiceNumber() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function yearOf(inv) {
+  const s = inv.data || '';
+  const m = /^(\d{4})/.exec(s);
+  if (m) return parseInt(m[1], 10);
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.getFullYear();
+}
+
+router.get('/export.zip', async (req, res, next) => {
+  try {
+    const yearFilter = req.query.year ? parseInt(req.query.year, 10) : null;
+    const settings = await storage.getSettings();
+    let list = await storage.getInvoices();
+    if (yearFilter) list = list.filter((i) => yearOf(i) === yearFilter);
+
+    if (!list.length) {
+      return res.status(404).json({ error: 'Nessuna fattura da esportare' });
+    }
+
+    const filename = yearFilter
+      ? `invoices-${yearFilter}.zip`
+      : `invoices-all-${new Date().toISOString().slice(0, 10)}.zip`;
+
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => {
+      console.error('[export] archive error:', err.message);
+      try { res.end(); } catch (_) { /* ignore */ }
+    });
+    archive.pipe(res);
+
+    for (const inv of list) {
+      try {
+        const { buffer } = await pdfStore.getOrBuild(inv, settings);
+        const folder = String(yearOf(inv) || 'sconosciuto');
+        const fname = pdfStore.safeFileName(inv);
+        archive.append(buffer, { name: `${folder}/${fname}` });
+      } catch (err) {
+        console.error(`[export] error on invoice ${inv.id}:`, err.message);
+      }
+    }
+    await archive.finalize();
   } catch (err) {
     next(err);
   }
