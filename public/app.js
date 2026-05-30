@@ -12,6 +12,8 @@ const state = {
   editing: null, // invoice under edit
   righe: [],
   settings: null,
+  dashboardYear: 'all', // 'all' o anno (numero) per filtrare l'archivio
+  invoices: [],
   importPreview: null,
   importMapping: null,   // { canonicalKey: csvHeader }
   importHeaders: null,   // [csvHeader, ...]
@@ -127,6 +129,83 @@ function applySenzaIvaClass() {
 }
 
 // ========== Dashboard ==========
+function yearOfInvoice(inv) {
+  const s = inv.data || '';
+  const m = /^(\d{4})/.exec(s);
+  if (m) return parseInt(m[1], 10);
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.getFullYear();
+}
+
+function renderYearTabs(list) {
+  const tabsEl = $('#invoices-year-tabs');
+  if (!tabsEl) return;
+  const years = Array.from(
+    new Set(list.map((i) => yearOfInvoice(i)).filter(Boolean))
+  ).sort((a, b) => b - a);
+  if (!years.length) { tabsEl.innerHTML = ''; return; }
+  const sel = state.dashboardYear;
+  const chips = [
+    `<button class="year-chip${sel === 'all' ? ' active' : ''}" data-year="all">Tutte<span class="count">${list.length}</span></button>`,
+  ].concat(
+    years.map((y) => {
+      const n = list.filter((i) => yearOfInvoice(i) === y).length;
+      const active = String(sel) === String(y) ? ' active' : '';
+      return `<button class="year-chip${active}" data-year="${y}">${y}<span class="count">${n}</span></button>`;
+    })
+  );
+  tabsEl.innerHTML = chips.join('');
+  tabsEl.onclick = (e) => {
+    const btn = e.target.closest('.year-chip');
+    if (!btn) return;
+    const y = btn.dataset.year;
+    state.dashboardYear = y === 'all' ? 'all' : parseInt(y, 10);
+    renderDashboardRows();
+  };
+}
+
+function renderDashboardRows() {
+  const all = state.invoices;
+  renderYearTabs(all);
+  const list = filteredInvoices();
+  updateInvoicesStats(list);
+  const tbody = $('#invoices-tbody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted center">${all.length ? "Nessuna fattura per l'anno selezionato." : 'Nessuna fattura.'}</td></tr>`;
+    $('#invoices-tfoot').innerHTML = '';
+    return;
+  }
+  tbody.innerHTML = '';
+  list.forEach((inv) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(inv.numero || '-')}</strong></td>
+      <td>${formatDate(inv.data)}</td>
+      <td>${escapeHtml(inv.cliente?.ragioneSociale || '-')}</td>
+      <td><span class="badge">${escapeHtml(inv.origine || 'manuale')}</span></td>
+      <td class="right">${EUR(inv.totali?.totale)}</td>
+      <td class="right">
+        <button class="btn" data-pdf="${inv.id}">PDF</button>
+        <button class="btn" data-email="${inv.id}" data-email-to="${escapeAttr(inv.cliente?.email || '')}">Invia email</button>
+        <button class="btn" data-edit="${inv.id}">Modifica</button>
+        <button class="btn danger" data-del="${inv.id}">Elimina</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  const totaleList = list.reduce((s, i) => s + (Number(i.totali?.totale) || 0), 0);
+  $('#invoices-tfoot').innerHTML = `
+    <tr class="total-row">
+      <td colspan="4" class="right"><strong>Totale (${list.length} fatture)</strong></td>
+      <td class="right"><strong>${EUR(totaleList)}</strong></td>
+      <td></td>
+    </tr>`;
+}
+
+function filteredInvoices() {
+  if (state.dashboardYear === 'all') return state.invoices;
+  return state.invoices.filter((i) => yearOfInvoice(i) === state.dashboardYear);
+}
+
 async function renderDashboard() {
   $('[data-action="new"]').onclick = () => {
     state.editing = null;
@@ -134,80 +213,51 @@ async function renderDashboard() {
     setView('nuova');
   };
   const tbody = $('#invoices-tbody');
+  tbody.onclick = async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const pdf = btn.dataset.pdf;
+    const edit = btn.dataset.edit;
+    const del = btn.dataset.del;
+    const email = btn.dataset.email;
+    if (pdf) window.open(`/api/invoices/${pdf}/pdf`, '_blank');
+    if (edit) {
+      const inv = await api.json(`/api/invoices/${edit}`);
+      state.editing = inv;
+      state.righe = inv.righe.length ? [...inv.righe] : [emptyRiga()];
+      setView('nuova');
+    }
+    if (del) {
+      if (!confirm('Eliminare la fattura?')) return;
+      await fetch(`/api/invoices/${del}`, { method: 'DELETE' });
+      toast('Fattura eliminata', 'ok');
+      renderDashboard();
+    }
+    if (email) {
+      const defaultTo = btn.dataset.emailTo || '';
+      const to = prompt('Inviare la fattura a:', defaultTo);
+      if (!to) return;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Invio…';
+      try {
+        await api.json(`/api/invoices/${email}/send-email`, {
+          method: 'POST',
+          body: JSON.stringify({ to }),
+        });
+        toast(`Fattura inviata a ${to}`, 'ok');
+      } catch (err) {
+        toast(err.message, 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+  };
   try {
     await loadSettings();
-    const list = await api.json('/api/invoices');
-    updateInvoicesStats(list);
-    if (!list.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="muted center">Nessuna fattura. Crea la prima dal pulsante in alto.</td></tr>';
-      $('#invoices-tfoot').innerHTML = '';
-      return;
-    }
-    tbody.innerHTML = '';
-    list.forEach((inv) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><strong>${escapeHtml(inv.numero || '-')}</strong></td>
-        <td>${formatDate(inv.data)}</td>
-        <td>${escapeHtml(inv.cliente?.ragioneSociale || '-')}</td>
-        <td><span class="badge">${escapeHtml(inv.origine || 'manuale')}</span></td>
-        <td class="right">${EUR(inv.totali?.totale)}</td>
-        <td class="right">
-          <button class="btn" data-pdf="${inv.id}">PDF</button>
-          <button class="btn" data-email="${inv.id}" data-email-to="${escapeAttr(inv.cliente?.email || '')}">Invia email</button>
-          <button class="btn" data-edit="${inv.id}">Modifica</button>
-          <button class="btn danger" data-del="${inv.id}">Elimina</button>
-        </td>`;
-      tbody.appendChild(tr);
-    });
-    const totaleList = list.reduce((s, i) => s + (Number(i.totali?.totale) || 0), 0);
-    $('#invoices-tfoot').innerHTML = `
-      <tr class="total-row">
-        <td colspan="4" class="right"><strong>Totale (${list.length} fatture)</strong></td>
-        <td class="right"><strong>${EUR(totaleList)}</strong></td>
-        <td></td>
-      </tr>`;
-    tbody.onclick = async (e) => {
-      const btn = e.target.closest('button');
-      if (!btn) return;
-      const pdf = btn.dataset.pdf;
-      const edit = btn.dataset.edit;
-      const del = btn.dataset.del;
-      const email = btn.dataset.email;
-      if (pdf) window.open(`/api/invoices/${pdf}/pdf`, '_blank');
-      if (edit) {
-        const inv = await api.json(`/api/invoices/${edit}`);
-        state.editing = inv;
-        state.righe = inv.righe.length ? [...inv.righe] : [emptyRiga()];
-        setView('nuova');
-      }
-      if (del) {
-        if (!confirm('Eliminare la fattura?')) return;
-        await fetch(`/api/invoices/${del}`, { method: 'DELETE' });
-        toast('Fattura eliminata', 'ok');
-        renderDashboard();
-      }
-      if (email) {
-        const defaultTo = btn.dataset.emailTo || '';
-        const to = prompt('Inviare la fattura a:', defaultTo);
-        if (!to) return;
-        const original = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Invio…';
-        try {
-          await api.json(`/api/invoices/${email}/send-email`, {
-            method: 'POST',
-            body: JSON.stringify({ to }),
-          });
-          toast(`Fattura inviata a ${to}`, 'ok');
-        } catch (err) {
-          toast(err.message, 'err');
-        } finally {
-          btn.disabled = false;
-          btn.textContent = original;
-        }
-      }
-    };
+    state.invoices = await api.json('/api/invoices');
+    renderDashboardRows();
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" class="muted center">Errore: ${escapeHtml(err.message)}</td></tr>`;
   }

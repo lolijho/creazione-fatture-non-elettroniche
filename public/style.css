@@ -152,6 +152,25 @@ input:focus, textarea:focus, select:focus { outline: 2px solid rgba(43,108,176,0
 .totals > div { display: flex; justify-content: space-between; align-items: center; }
 .totals .grand { font-size: 18px; padding-top: 6px; border-top: 1px dashed var(--border); }
 
+.year-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.year-chip {
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.year-chip:hover { background: #f2f4f9; }
+.year-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.year-chip .count { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.year-chip.active .count { color: rgba(255,255,255,0.8); }
+
 .stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
